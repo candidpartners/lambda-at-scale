@@ -1,4 +1,4 @@
-FXN_NAME=crawl-driver
+FXN_NAME?=crawl-driver
 S3_BUCKET?=candid-serverlessrepo
 OUTPUT_CF=serverless.yaml
 REGION?=us-east-1
@@ -21,7 +21,7 @@ $(STAMP_SETUP):
 index.zip: index.js
 	zip $@ $<
 
-push: index.zip
+upgrade: index.zip | $(STAMP_SETUP)
 	$(AWS) lambda update-function-code \
 		--zip-file fileb://$< \
 		--function-name $(FXN_NAME)

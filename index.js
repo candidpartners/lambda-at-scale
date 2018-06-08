@@ -143,6 +143,10 @@ async function handle_path(url, handle, path) {
 	}
 }
 
+async function on_metrics(metrics){
+	console.log(metrics)
+}
+
 async function handle_message(fxn_name, url, worker_id) {
 	const response = await sqs.receiveMessage({ QueueUrl : url }).promise()
 	const messages = response.Messages || []
@@ -155,7 +159,8 @@ async function handle_message(fxn_name, url, worker_id) {
 	}
 
 	for(const message of messages){
-		const result = await handle_path(url, message.ReceiptHandle, message.Body)
+		const metrics = await handle_path(url, message.ReceiptHandle, message.Body)
+		await on_metrics(metrics)
 	}
 
 	const run = await run_lambda(fxn_name, url, worker_id)
