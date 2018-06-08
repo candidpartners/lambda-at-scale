@@ -1,0 +1,55 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Parameters:
+  NumberOfWorkers:
+    Type: Number
+    Description: 'How many concurrent workers do you want'
+    Default: 4
+  NumberOfChunks:
+    Type: Number
+    Description: 'How many index files do you want to consider'
+    Default: 2
+  IndexBucket:
+    Type: String
+    Description: 'Bucket to look for the index key'
+    Default: 'commoncrawl'
+  IndexKey:
+    Type: String
+    Description: 'Key for the index object'
+    Default: 'crawl-data/CC-MAIN-2018-17/warc.paths.gz'
+  SearchRegex:
+    Type: String
+    Description: 'The regular expression to apply to the data chunks'
+    Default: '(\([0-9]{3}\) |[0-9]{3}-)[0-9]{3}-[0-9]{4}'
+
+Resources:
+  CrawlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs8.10
+      MemorySize: 512
+      Timeout: 300
+      Policies:
+        - SQSPollerPolicy:
+             QueueName:
+                Fn::GetAtt: [ "CrawlQueue", "QueueName" ]
+        - SQSSendMessagePolicy:
+             QueueName:
+                Fn::GetAtt: [ "CrawlQueue", "QueueName" ]
+        - S3ReadPolicy:
+             BucketName: !Ref IndexBucket
+        # NB: this allows us to invoke all functions in the stack
+        - LambdaInvokePolicy:
+             FunctionName: !Ref AWS::StackName
+      Environment:
+        Variables:
+          QUEUE_URL: !Ref CrawlQueue
+          MAX_WORKERS: !Ref NumberOfWorkers
+          MAX_CHUNKS: !Ref NumberOfChunks
+          CRAWL_INDEX_BUCKET: !Ref IndexBucket
+          CRAWL_INDEX_KEY: !Ref IndexKey
+  CrawlQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 300
