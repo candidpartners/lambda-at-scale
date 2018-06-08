@@ -1,12 +1,13 @@
+OUT=out
+
 FXN_NAME?=crawl-driver
 S3_BUCKET?=candid-serverlessrepo
-OUTPUT_CF=serverless.yaml
+OUTPUT_CF=$(OUT)/serverless.yaml
 REGION?=us-east-1
 APPLICATION_NAME=Crawler
 APPLICATION_ID=arn:aws:serverlessrepo:$(REGION):$(AWS_ACN):applications/$(APPLICATION_NAME)
 VERSION?=1.0.0
 
-OUT=out
 STAMP_SETUP = $(OUT)/stamp-setup
 
 AWS=aws --profile $(AWS_PROFILE)
@@ -32,7 +33,7 @@ clean:
 realclean:
 	git clean -xdf .
 
-$(OUTPUT_CF): crawl.yaml index.js Makefile | $(STAMP_SETUP)
+$(OUTPUT_CF): crawl.yaml index.js Makefile | $(STAMP_SETUP) $(OUT)
 	sam package \
 		--template-file $< \
 		--output-template-file $(OUTPUT_CF) \
@@ -52,5 +53,8 @@ deploy: $(OUTPUT_CF)
 
 destroy:
 	$(AWS) cloudformation delete-stack --stack-name $(FXN_NAME)
+
+$(OUT):
+	mkdir -p $@
 
 .PHONY: setup push clean package deploy

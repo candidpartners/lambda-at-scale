@@ -2,6 +2,9 @@
 
 const AWS = require('aws-sdk')
 
+// should be good enough to give us a id w/o collisions and not require a uuid lib
+const crypto = require('crypto')
+
 AWS.config.update({region: 'us-east-1'});
 
 const zlib = require('zlib')
@@ -42,10 +45,10 @@ async function gunzipBuf(buffer) {
 	})
 }
 
-async function run_lambda(fxn_name, url, worker_id) {
+async function run_lambda(fxn_name, url, worker_id, run_id) {
 	const params = {
 		FunctionName: fxn_name,
-		Payload: JSON.stringify({ url, worker_id }),
+		Payload: JSON.stringify({ url, worker_id, run_id }),
 		InvocationType: 'Event'
 	}
 
@@ -54,7 +57,9 @@ async function run_lambda(fxn_name, url, worker_id) {
 }
 
 async function driver(fxn_name) {
-	console.log("Starting ", fxn_name)
+	const run_id = crypto.randomBytes(16).toString("hex")
+
+	console.log("Starting ", fxn_name, run_id)
 
 	const max = process.env.MAX_CHUNKS ? parseInt(process.env.MAX_CHUNKS) : 2
 
@@ -62,7 +67,6 @@ async function driver(fxn_name) {
 	const manifest = await gunzipBuf(content.Body)
 	const lines = manifest.toString().split("\n")
 		.slice(0, max) // limit for now
-	console.log("Lines: ", lines.length)
 
 	const enqueues = lines.map(line => {
 		return sqs.sendMessage({
@@ -77,7 +81,7 @@ async function driver(fxn_name) {
 
 	const workers = []
 	for (var idx = 0; idx != MAX_WORKERS; idx++) {
-		workers.push(run_lambda(fxn_name, QUEUE_URL, idx))
+		workers.push(run_lambda(fxn_name, QUEUE_URL, idx, run_id))
 	}
 
 	return Promise.all(workers).then(() => "All launched")
@@ -129,7 +133,6 @@ async function handle_path(url, handle, path) {
 	// wait for the stream to finish, probably a better idiom to use
 	await new Promise((resolve, reject) => {
 		stream.on("end", () => {
-			console.log("All done")
 			resolve("complete")
 		})
 	})
@@ -143,11 +146,11 @@ async function handle_path(url, handle, path) {
 	}
 }
 
-async function on_metrics(metrics){
+async function on_metrics(metrics, worker_id, run_id){
 	console.log(metrics)
 }
 
-async function handle_message(fxn_name, url, worker_id) {
+async function handle_message(fxn_name, url, worker_id, run_id) {
 	const response = await sqs.receiveMessage({ QueueUrl : url }).promise()
 	const messages = response.Messages || []
 
@@ -160,16 +163,16 @@ async function handle_message(fxn_name, url, worker_id) {
 
 	for(const message of messages){
 		const metrics = await handle_path(url, message.ReceiptHandle, message.Body)
-		await on_metrics(metrics)
+		await on_metrics(metrics, worker_id, run_id)
 	}
 
-	const run = await run_lambda(fxn_name, url, worker_id)
+	const run = await run_lambda(fxn_name, url, worker_id, run_id)
 	console.log(run)
 	return "All done"
 }
 
 exports.handler = async (args,event,context) => {
-	const { url, worker_id } = args
+	const { url, worker_id, run_id } = args
 	const handler = url ? handle_message : driver
-	return handler(process.env.WORKER_FXN || event.functionName, url, worker_id)
+	return handler(process.env.WORKER_FXN || event.functionName, url, worker_id, run_id)
 }
