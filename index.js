@@ -129,7 +129,7 @@ async function handle_path(url, handle, path) {
 	// wait for the stream to finish, probably a better idiom to use
 	await new Promise((resolve, reject) => {
 		stream.on("end", () => {
-			console.log("All done -- ", count)
+			console.log("All done")
 			resolve("complete")
 		})
 	})
