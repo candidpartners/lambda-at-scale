@@ -26,8 +26,6 @@ const REGEX = new RegExp(process.env.REGEX || DEFAULT_REGEX, process.env.REGEX_F
 
 const REQUEST_REGEX = new RegExp('\nWARC-Type: request', 'gm')
 
-var total_invocations = 0
-
 async function get_object(bucket, key) {
 	const params = { Bucket: bucket, Key : key }
 	return s3.getObject(params).promise()
@@ -154,10 +152,8 @@ async function handle_message(fxn_name, url, worker_id, run_id) {
 	const response = await sqs.receiveMessage({ QueueUrl : url }).promise()
 	const messages = response.Messages || []
 
-	// regardless of our worker_id, this container was used total_invocations times
-	total_invocations++
 	if (0 == messages.length){
-		console.log(worker_id + ": No work to do. Total invocations = ", total_invocations)
+		console.log(worker_id + ": No work to do")
 		return "All done"
 	}
 

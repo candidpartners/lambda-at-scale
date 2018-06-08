@@ -8,21 +8,14 @@ APPLICATION_NAME=Crawler
 APPLICATION_ID=arn:aws:serverlessrepo:$(REGION):$(AWS_ACN):applications/$(APPLICATION_NAME)
 VERSION?=1.0.0
 
-STAMP_SETUP = $(OUT)/stamp-setup
-
 AWS=aws --profile $(AWS_PROFILE)
 
 .DEFAULT_GOAL := $(OUTPUT_CF)
 
-$(STAMP_SETUP):
-	mkdir -p $(@D)
-	npm i aws-sdk
-	touch $@
-
 index.zip: index.js
 	zip $@ $<
 
-upgrade: index.zip | $(STAMP_SETUP)
+upgrade: index.zip
 	$(AWS) lambda update-function-code \
 		--zip-file fileb://$< \
 		--function-name $(FXN_NAME)
@@ -30,10 +23,7 @@ upgrade: index.zip | $(STAMP_SETUP)
 clean:
 	rm -rf node_modules index.zip $(OUTPUT_CF) $(OUT)
 
-realclean:
-	git clean -xdf .
-
-$(OUTPUT_CF): crawl.yaml index.js Makefile | $(STAMP_SETUP) $(OUT)
+$(OUTPUT_CF): crawl.yaml index.js Makefile | $(OUT)
 	sam package \
 		--template-file $< \
 		--output-template-file $(OUTPUT_CF) \
