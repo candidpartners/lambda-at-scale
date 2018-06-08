@@ -136,8 +136,9 @@ async function handle_path(url, handle, path) {
 
 	await sqs.deleteMessage({ QueueUrl : url, ReceiptHandle: handle }).promise()
 	return {
-		'compressed' : compressed_bytes,
-		'uncompressed' : uncompressed_bytes,
+		total_requests,
+		compressed_bytes,
+		uncompressed_bytes,
 		'elapsed_ms' : new Date().getTime() - start_time
 	}
 }
