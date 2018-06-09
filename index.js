@@ -148,8 +148,7 @@ async function handle_path(url, path) {
 		create_metric('total_requests', total_requests),
 		create_metric('compressed_bytes', compressed_bytes, 'Bytes'),
 		create_metric('uncompressed_bytes', uncompressed_bytes, 'Bytes'),
-		create_metric('elapsed_ms', now - start_time, 'Milliseconds'),
-		create_metric('end_time', now, 'Milliseconds'),
+		create_metric('elapsed_ms', now - start_time, 'Milliseconds')
 	]
 }
 
@@ -187,8 +186,11 @@ async function handle_message(fxn_name, url, run_id, worker_id) {
 	const response = await sqs.receiveMessage({ QueueUrl : url }).promise()
 	const messages = response.Messages || []
 
+	// we're at the end of our queue, so send our done time
 	if (0 == messages.length){
 		console.log(worker_id + ": No work to do")
+		const metric = create_metric('end_time', now, 'Milliseconds')
+		await on_metrics([metric], fxn_name, run_id)
 		return "All done"
 	}
 
