@@ -4,24 +4,30 @@ FXN_NAME?=crawl-driver
 S3_BUCKET?=candid-serverlessrepo
 OUTPUT_CF=$(OUT)/serverless.yaml
 REGION?=us-east-1
-APPLICATION_NAME=Crawler
+APPLICATION_NAME=LambdaScale
 APPLICATION_ID=arn:aws:serverlessrepo:$(REGION):$(AWS_ACN):applications/$(APPLICATION_NAME)
 VERSION?=1.0.0
+
+INDEX_ZIP = $(OUT)/index.zip
+STAMP_SETUP = $(OUT)/stamp-setup
 
 AWS=aws --profile $(AWS_PROFILE)
 
 .DEFAULT_GOAL := $(OUTPUT_CF)
 
-index.zip: index.js
+$(STAMP_SETUP): | $(OUT)
+	npm i --prefix $(OUT) aws-sdk
+
+$(INDEX_ZIP): index.js | $(OUT)
 	zip $@ $<
 
-upgrade: index.zip
+upgrade: $(INDEX_ZIP) $(STAMP_SETUP)
 	$(AWS) lambda update-function-code \
 		--zip-file fileb://$< \
 		--function-name $(FXN_NAME)
 
 clean:
-	rm -rf node_modules index.zip $(OUTPUT_CF) $(OUT)
+	rm -rf $(OUT)
 
 $(OUTPUT_CF): crawl.yaml index.js Makefile | $(OUT)
 	sam package \

@@ -23,7 +23,7 @@ Parameters:
     Default: '(\([0-9]{3}\) |[0-9]{3}-)[0-9]{3}-[0-9]{4}'
 
 Resources:
-  CrawlFunction:
+  Worker:
     Type: AWS::Serverless::Function
     Properties:
       Handler: index.handler
