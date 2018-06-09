@@ -39,6 +39,7 @@ Resources:
                 Fn::GetAtt: [ "CrawlQueue", "QueueName" ]
         - S3ReadPolicy:
              BucketName: !Ref IndexBucket
+        - CloudWatchPutMetricPolicy: {}
         # NB: this allows us to invoke all functions in the stack
         - LambdaInvokePolicy:
              FunctionName: !Ref AWS::StackName

@@ -44,7 +44,10 @@ deploy: $(OUTPUT_CF)
 destroy:
 	$(AWS) cloudformation delete-stack --stack-name $(FXN_NAME)
 
+test: | $(OUT)
+	$(AWS) lambda invoke --function-name $(FXN_NAME) --invocation-type Event $(OUT)/test.$(shell date +%s)
+
 $(OUT):
 	mkdir -p $@
 
-.PHONY: setup push clean package deploy
+.PHONY: setup push clean package deploy test
