@@ -56,7 +56,7 @@ async function run_lambda(fxn_name, url, run_id, worker_id) {
 		.catch(err => console.log('Something went wrong', err))
 }
 
-async function driver(fxn_name) {
+async function driver(fxn_name, memorySize) {
 	const start_time = new Date().getTime()
 	const run_id = crypto.randomBytes(16).toString("hex")
 
@@ -87,6 +87,7 @@ async function driver(fxn_name) {
 	}
 
 	const metrics = [
+		create_metric('memory_size', memorySize, 'Megabytes'),
 		create_metric('start_time', start_time, 'Milliseconds'),
 		create_metric('total_workers', workers.length),
 		create_metric('total_chunks', lines.length)
@@ -143,6 +144,7 @@ async function handle_path(url, path) {
 
 	const now = new Date().getTime()
 	return [
+		create_metric('regex_hits', count),
 		create_metric('total_requests', total_requests),
 		create_metric('compressed_bytes', compressed_bytes, 'Bytes'),
 		create_metric('uncompressed_bytes', uncompressed_bytes, 'Bytes'),
@@ -201,8 +203,13 @@ async function handle_message(fxn_name, url, run_id, worker_id) {
 	return "All done"
 }
 
-exports.handler = async (args,event,context) => {
+exports.handler = async (args, context) => {
 	const { url, run_id, worker_id } = args
-	const handler = url ? handle_message : driver
-	return handler(process.env.WORKER_FXN || event.functionName, url, run_id, worker_id)
+
+	if (url){
+		return handle_message(context.functionName, url, run_id, worker_id)
+	} else {
+		const memorySize = parseInt(context.memoryLimitInMB)
+		return driver(context.functionName, memorySize)
+	}
 }
