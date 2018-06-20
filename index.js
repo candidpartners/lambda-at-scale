@@ -143,12 +143,15 @@ async function handle_path(url, path) {
 	})
 
 	const now = new Date().getTime()
+	// we're measuring time internally, this isn't 100%, but go ahead
+	// and round up to the nearest 100ms
+	const elapsed = Math.ceil((now - start_time) / 100) * 100
 	return [
 		create_metric('regex_hits', count),
 		create_metric('total_requests', total_requests),
 		create_metric('compressed_bytes', compressed_bytes, 'Bytes'),
 		create_metric('uncompressed_bytes', uncompressed_bytes, 'Bytes'),
-		create_metric('elapsed_ms', now - start_time, 'Milliseconds')
+		create_metric('elapsed_ms', elapsed, 'Milliseconds')
 	]
 }
 
