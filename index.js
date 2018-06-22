@@ -94,7 +94,7 @@ async function driver(fxn_name, memorySize) {
 	]
 	await on_metrics(metrics, fxn_name, run_id)
 
-	return Promise.all(workers).then(() => "All launched")
+	return Promise.all(workers).then(() => "All launched for " + run_id)
 }
 
 async function handle_path(url, path) {
