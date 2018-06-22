@@ -192,7 +192,7 @@ async function handle_message(fxn_name, url, run_id, worker_id) {
 	// we're at the end of our queue, so send our done time
 	if (0 == messages.length){
 		console.log(worker_id + ": No work to do")
-		const metric = create_metric('end_time', now, 'Milliseconds')
+		const metric = create_metric('end_time', new Date().getTime(), 'Milliseconds')
 		await on_metrics([metric], fxn_name, run_id)
 		return "All done"
 	}
