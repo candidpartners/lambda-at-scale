@@ -32,7 +32,7 @@ const REQUEST_REGEX = new RegExp('\nWARC-Type: request', 'gm')
 function shuffle(input) {
 	for (let i = input.length - 1; i > 0; i--) {
 		const j = Math.floor(Math.random() * (i + 1));
-		[array[i], array[j]] = [array[j], array[i]]; // eslint-disable-line no-param-reassign
+		[input[i], input[j]] = [input[j], input[i]]; // eslint-disable-line no-param-reassign
 	}
 }
 
