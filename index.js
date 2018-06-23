@@ -34,6 +34,7 @@ function shuffle(input) {
 		const j = Math.floor(Math.random() * (i + 1));
 		[input[i], input[j]] = [input[j], input[i]]; // eslint-disable-line no-param-reassign
 	}
+	return input
 }
 
 async function get_object(bucket, key) {
