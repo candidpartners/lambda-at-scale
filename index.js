@@ -28,6 +28,14 @@ const REGEX = new RegExp(process.env.REGEX || DEFAULT_REGEX, process.env.REGEX_F
 
 const REQUEST_REGEX = new RegExp('\nWARC-Type: request', 'gm')
 
+// borrows from SO
+function shuffle(input) {
+	for (let i = input.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[array[i], array[j]] = [array[j], array[i]]; // eslint-disable-line no-param-reassign
+	}
+}
+
 async function get_object(bucket, key) {
 	const params = { Bucket: bucket, Key : key }
 	return s3.getObject(params).promise()
@@ -66,8 +74,12 @@ async function driver(fxn_name, memorySize) {
 
 	const content = await get_object(BUCKET, KEY)
 	const manifest = await gunzipBuf(content.Body)
-	const lines = manifest.toString().split("\n")
-		.slice(0, max) // limit for now
+	const all_archives = manifest.toString().split("\n")
+
+	// mix things up so we can test random archives other than the first couple
+	const input = process.env.SHUFFLE ?  shuffle(all_archives) : all_archives
+
+	const lines = input.slice(0, max) // limit for now
 
 	const enqueues = lines.map(line => {
 		return sqs.sendMessage({
