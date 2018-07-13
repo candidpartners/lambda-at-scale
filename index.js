@@ -37,9 +37,16 @@ function shuffle(input) {
 	return input
 }
 
+function fatal(err) {
+	console.log(err)
+	process.exit(1)
+}
+
 async function get_object(bucket, key) {
 	const params = { Bucket: bucket, Key : key }
 	return s3.getObject(params).promise()
+		.catch(err => fatal("Unable to get S3 data"))
+
 }
 
 async function gunzipBuf(buffer) {
@@ -62,7 +69,7 @@ async function run_lambda(fxn_name, url, run_id, worker_id) {
 	}
 
 	return lambda.invoke(params).promise()
-		.catch(err => console.log('Something went wrong', err))
+		.catch(err => fatal('Something went wrong invoking lambda ' + err))
 }
 
 async function driver(fxn_name, memorySize) {
@@ -87,12 +94,31 @@ async function driver(fxn_name, memorySize) {
 			MessageBody: line,
 			QueueUrl : QUEUE_URL
 		}).promise()
+		.catch(err => fatal("Unable to fully populate queue: " + err))
 	})
 
 
 	// make sure we have our queue populated before we spin off
 	// workers or we may race
 	await Promise.all(enqueues)
+
+	// the promises have all run, now we need to make sure SQS shows all of them
+	// or our lambdas may start and immediately be done
+	const attr_params = {
+		QueueUrl: QUEUE_URL,
+		AttributeNames: [ 'ApproximateNumberOfMessages' ]
+	}
+
+	while (true){
+		const results = await sqs.getQueueAttributes(attr_params).promise()
+			.catch(err => fatal("Unable to determine queue depth: " + err))
+		const ready = results.Attributes.ApproximateNumberOfMessages
+		if (ready == lines.length){ // NB: type coercion here
+			console.log("Queue reports " + ready + " messages available")
+			break
+		}
+		console.log("Waiting for messages to show in SQS, see " + ready + ", want " + lines.length)
+	}
 
 	const workers = []
 	for (var worker_id = 0; worker_id != MAX_WORKERS; worker_id++) {
@@ -107,7 +133,12 @@ async function driver(fxn_name, memorySize) {
 	]
 	await on_metrics(metrics, fxn_name, run_id)
 
-	return Promise.all(workers).then(() => "All launched for " + run_id)
+	return Promise.all(workers)
+		.catch(err => {
+			console.log("Something went wrong starting workers: " + err)
+			process.exit(1)
+		})
+		.then(() => "All launched for " + run_id)
 }
 
 async function handle_path(url, path) {
@@ -196,10 +227,15 @@ async function on_metrics(metrics, fxn_name, run_id){
 		'Namespace' : fxn_name
 	}
 	return cloudwatch.putMetricData(update).promise()
+		.catch(err => {
+			console.log("Error putting metric data: " + err)
+			process.exit(0)
+		})
 }
 
 async function handle_message(fxn_name, url, run_id, worker_id) {
 	const response = await sqs.receiveMessage({ QueueUrl : url }).promise()
+		.catch(err => fatal("Failed to receive message from queue: " + err))
 	const messages = response.Messages || []
 
 	// we're at the end of our queue, so send our done time
@@ -213,6 +249,7 @@ async function handle_message(fxn_name, url, run_id, worker_id) {
 	for(const message of messages){
 		const metrics = await handle_path(url, message.Body)
 		await sqs.deleteMessage({ QueueUrl : url, ReceiptHandle: message.ReceiptHandle }).promise()
+			.catch(err => fatal("Failed to delete message from queue: " + err))
 		await on_metrics(metrics, fxn_name, run_id)
 	}
 
