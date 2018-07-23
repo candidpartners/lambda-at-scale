@@ -37,8 +37,12 @@ function shuffle(input) {
 	return input
 }
 
+function annoying(err) {
+	console.log("ANNOY: " + err)
+}
+
 function fatal(err) {
-	console.log(err)
+	console.log("FATAL: " + err)
 	process.exit(1)
 }
 
@@ -87,7 +91,7 @@ async function driver(fxn_name, memorySize) {
 	// mix things up so we can test random archives other than the first couple
 	const input = process.env.SHUFFLE ?  shuffle(all_archives) : all_archives
 
-	const lines = input.slice(0, max) // limit for now
+	const lines = input.slice(0, max).filter(data => 0 != data.length) // limit for now
 
 	const enqueues = lines.map(line => {
 		return sqs.sendMessage({
@@ -101,6 +105,7 @@ async function driver(fxn_name, memorySize) {
 	// make sure we have our queue populated before we spin off
 	// workers or we may race
 	await Promise.all(enqueues)
+		.catch(err => fatal("Unable to enqueue all messages"))
 
 	// the promises have all run, now we need to make sure SQS shows all of them
 	// or our lambdas may start and immediately be done
@@ -134,11 +139,12 @@ async function driver(fxn_name, memorySize) {
 	await on_metrics(metrics, fxn_name, run_id)
 
 	return Promise.all(workers)
-		.catch(err => {
-			console.log("Something went wrong starting workers: " + err)
-			process.exit(1)
-		})
+		.catch(err => fatal("Something went wrong starting workers: " + err))
 		.then(() => "All launched for " + run_id)
+}
+
+async function sandbag(url, path){
+	return new Promise(resolve => setTimeout(resolve, process.env.SANDBAG || 60000))
 }
 
 async function handle_path(url, path) {
@@ -208,6 +214,11 @@ function create_metric(key, value, unit){
 }
 
 async function on_metrics(metrics, fxn_name, run_id){
+
+	if (true){
+		return
+	}
+
 	const date = new Date()
 	const metricList = metrics.map(metric => {
 		console.log(metric.key, ' -> ', metric.value)
@@ -227,10 +238,7 @@ async function on_metrics(metrics, fxn_name, run_id){
 		'Namespace' : fxn_name
 	}
 	return cloudwatch.putMetricData(update).promise()
-		.catch(err => {
-			console.log("Error putting metric data: " + err)
-			process.exit(0)
-		})
+		.catch(err => annoying("Error putting metric data: " + err))
 }
 
 async function handle_message(fxn_name, url, run_id, worker_id) {
@@ -247,7 +255,7 @@ async function handle_message(fxn_name, url, run_id, worker_id) {
 	}
 
 	for(const message of messages){
-		const metrics = await handle_path(url, message.Body)
+		const metrics = await sandbag(url, message.Body)
 		await sqs.deleteMessage({ QueueUrl : url, ReceiptHandle: message.ReceiptHandle }).promise()
 			.catch(err => fatal("Failed to delete message from queue: " + err))
 		await on_metrics(metrics, fxn_name, run_id)
