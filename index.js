@@ -21,6 +21,7 @@ const BUCKET = process.env.CRAWL_INDEX_BUCKET || 'commoncrawl'
 const KEY = process.env.CRAWL_INDEX_KEY || 'crawl-data/CC-MAIN-2018-17/warc.paths.gz'
 
 const QUEUE_URL = process.env.QUEUE_URL
+const METRIC_URL = process.env.METRIC_URL
 const MAX_WORKERS = process.env.MAX_WORKERS || 4
 const DEFAULT_REGEX = '(\([0-9]{3}\) |[0-9]{3}-)[0-9]{3}-[0-9]{4}'
 const DEFAULT_REGEX_FLAGS = 'gm'
@@ -122,7 +123,7 @@ async function driver(fxn_name, memorySize) {
 		const results = await sqs.getQueueAttributes(attr_params).promise()
 			.catch(err => fatal("Unable to determine queue depth: " + err))
 		const ready = results.Attributes.ApproximateNumberOfMessages
-		if (ready == lines.length){ // NB: type coercion here
+		if (ready >= lines.length){ // NB: type coercion here
 			console.log("Queue reports " + ready + " messages available")
 			break
 		}
@@ -218,10 +219,6 @@ function create_metric(key, value, unit){
 }
 
 async function on_metrics(metrics, fxn_name, run_id){
-	if (true){
-		return
-	}
-
 	const date = new Date()
 	const metricList = metrics.map(metric => {
 		console.log(metric.key, ' -> ', metric.value)
@@ -240,8 +237,17 @@ async function on_metrics(metrics, fxn_name, run_id){
 		'MetricData' : metricList,
 		'Namespace' : fxn_name
 	}
-	return cloudwatch.putMetricData(update).promise()
-		.catch(err => annoying("Error putting metric data: " + err))
+
+	// We exceed putMetricData's sustainable rate here
+//	return cloudwatch.putMetricData(update).promise()
+//		.catch(err => annoying("Error putting metric data: " + err))
+
+	// ... so for now, shunt to this queue
+	return sqs.sendMessage({
+			MessageBody: JSON.stringify(update),
+			QueueUrl : METRIC_URL
+		}).promise()
+		.catch(err => fatal("Unable to send metric: " + err))
 }
 
 async function handle_message(fxn_name, url, run_id, worker_id) {

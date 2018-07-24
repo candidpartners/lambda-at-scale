@@ -34,9 +34,15 @@ Resources:
         - SQSPollerPolicy:
              QueueName:
                 Fn::GetAtt: [ "CrawlQueue", "QueueName" ]
+        - SQSPollerPolicy:
+             QueueName:
+                Fn::GetAtt: [ "MetricQueue", "QueueName" ]
         - SQSSendMessagePolicy:
              QueueName:
                 Fn::GetAtt: [ "CrawlQueue", "QueueName" ]
+        - SQSSendMessagePolicy:
+             QueueName:
+                Fn::GetAtt: [ "MetricQueue", "QueueName" ]
         - S3ReadPolicy:
              BucketName: !Ref IndexBucket
         - CloudWatchPutMetricPolicy: {}
@@ -46,11 +52,16 @@ Resources:
       Environment:
         Variables:
           QUEUE_URL: !Ref CrawlQueue
+          METRIC_URL: !Ref MetricQueue
           MAX_WORKERS: !Ref NumberOfWorkers
           MAX_CHUNKS: !Ref NumberOfChunks
           CRAWL_INDEX_BUCKET: !Ref IndexBucket
           CRAWL_INDEX_KEY: !Ref IndexKey
   CrawlQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 300
+  MetricQueue:
     Type: AWS::SQS::Queue
     Properties:
       VisibilityTimeout: 300
