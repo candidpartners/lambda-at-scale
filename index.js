@@ -28,6 +28,10 @@ const REGEX = new RegExp(process.env.REGEX || DEFAULT_REGEX, process.env.REGEX_F
 
 const REQUEST_REGEX = new RegExp('\nWARC-Type: request', 'gm')
 
+async function sandbag(delay){
+	return new Promise(resolve => setTimeout(resolve, delay))
+}
+
 // borrows from SO
 function shuffle(input) {
 	for (let i = input.length - 1; i > 0; i--) {
