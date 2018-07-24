@@ -218,7 +218,6 @@ function create_metric(key, value, unit){
 }
 
 async function on_metrics(metrics, fxn_name, run_id){
-
 	if (true){
 		return
 	}
@@ -259,7 +258,7 @@ async function handle_message(fxn_name, url, run_id, worker_id) {
 	}
 
 	for(const message of messages){
-		const metrics = await sandbag(url, message.Body)
+		const metrics = await handle_path(url, message.Body)
 		await sqs.deleteMessage({ QueueUrl : url, ReceiptHandle: message.ReceiptHandle }).promise()
 			.catch(err => fatal("Failed to delete message from queue: " + err))
 		await on_metrics(metrics, fxn_name, run_id)
