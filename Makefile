@@ -19,6 +19,7 @@ $(STAMP_SETUP): | $(OUT)
 	npm i --prefix $(OUT) aws-sdk
 
 $(INDEX_ZIP): index.js | $(OUT)
+	nodejs -c $<
 	zip $@ $<
 
 upgrade: $(INDEX_ZIP) $(STAMP_SETUP)
