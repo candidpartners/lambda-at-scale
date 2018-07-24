@@ -9,7 +9,6 @@ AWS.config.update({region: 'us-east-1'}); // TODO: pull from environment or some
 
 
 const zlib = require('zlib')
-const fs = require('fs');
 const { Transform } = require('stream');
 
 const cloudwatch = new AWS.CloudWatch()
