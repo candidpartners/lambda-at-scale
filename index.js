@@ -271,29 +271,21 @@ async function handle_message(fxn_name, run_id, worker_id) {
 }
 
 async function persist_metric_batch(messages){
-	const data = []
 	for (const message of messages){
-		for (const metric_data of message.MetricData){
-			data.push(metric_data)
-		}
+		await cloudwatch.putMetricData(message).promise()
+			.catch(err => fatal("Error putting metric data: " + err))
 	}
 
-	const update = {
-		Namespace: messages[0].Namespace,
-		MetricData: data
-	}
-
-	return cloudwatch.putMetricData(update).promise()
-		.catch(err => annoying("Error putting metric data: " + err))
+	return true
 }
 
+// NB: this could be made much better, but isn't the point
 async function persist_metrics(){
 	while (true){
 		const response = await sqs.receiveMessage({ QueueUrl : METRIC_URL, MaxNumberOfMessages: 10 }).promise()
 			.catch(err => fatal("Failed to receive message from queue: " + err))
 		const messages = response.Messages || []
 
-		console.log("LEN: " + messages.length)
 		if (0 === messages.length){
 			break
 		}
@@ -305,12 +297,11 @@ async function persist_metrics(){
 
 		await persist_metric_batch(metrics)
 		await sandbag(10) // sandbag for 10ms so we do at most 100 / second
-/*
+
 		for (var message of messages){
 			await sqs.deleteMessage({ QueueUrl : METRIC_URL, ReceiptHandle: message.ReceiptHandle }).promise()
 				.catch(err => fatal("Failed to delete metric message from queue: " + err))
 		}
-		*/
 	}
 
 	return true
