@@ -31,6 +31,7 @@ const REQUEST_REGEX = new RegExp('\nWARC-Type: request', 'gm')
 const METRIC_REQUEST = 'metric'
 const WORK_REQUEST = 'work'
 const WARM_REQUEST = 'warm'
+const START_REQUEST = 'start'
 
 async function sandbag(delay){
 	return new Promise(resolve => setTimeout(resolve, delay))
@@ -279,8 +280,13 @@ async function persist_metric_batch(messages){
 	return true
 }
 
+async function warming_environment(){
+	console.log("Warming environment")
+}
+
 // NB: this could be made much better, but isn't the point
 async function persist_metrics(){
+	console.log("Persisting metrics")
 	while (true){
 		const response = await sqs.receiveMessage({ QueueUrl : METRIC_URL, MaxNumberOfMessages: 10 }).promise()
 			.catch(err => fatal("Failed to receive message from queue: " + err))
@@ -310,14 +316,15 @@ async function persist_metrics(){
 exports.handler = async (args, context) => {
 	const { type, run_id, worker_id } = args
 
-	if (WARM_REQUEST === type){
-		return "do warming"
-	} else if (WORK_REQUEST === type){
-		return handle_message(context.functionName, run_id, worker_id)
-	} else if (METRIC_REQUEST === type){
-		return persist_metrics()
-	} else {
-		const memorySize = parseInt(context.memoryLimitInMB)
-		return driver(context.functionName, memorySize)
+	switch (type){
+		case WARM_REQUEST:
+			return warming_environment()
+		case WORK_REQUEST:
+			return handle_message(context.functionName, run_id, worker_id)
+		case METRIC_REQUEST:
+			return persist_metrics()
+		case START_REQUEST:
+			const memorySize = parseInt(context.memoryLimitInMB)
+			return driver(context.functionName, memorySize)
 	}
 }
