@@ -280,8 +280,40 @@ async function persist_metric_batch(messages){
 	return true
 }
 
-async function warming_environment(){
-	console.log("Warming environment")
+// get the most recent value for the last 5 minutes
+async function get_metric(fxn_name, metric) {
+	const now = Math.round(new Date().getTime() / 1000)
+	const params = {
+		StartTime: now - 300, // start looking in the last hour
+		EndTime: now,
+		MetricDataQueries: [
+			{
+				Id: 'm1',
+				MetricStat: {
+					Period: 60, // 1 minute rollups
+					Stat: 'SampleCount',
+					Unit: 'Count',
+					Metric: {
+						Namespace: 'AWS/Lambda',
+						Dimensions: [ { Name: 'FunctionName', Value: fxn_name } ],
+						MetricName: metric
+					}
+				}
+			}
+		]
+	}
+
+	const results = await cloudwatch.getMetricData(params).promise()
+	const metricResults = results.MetricDataResults[0]
+	const values = metricResults.Values || []
+	return 0 !== values.length ? values[0] : 0
+}
+
+async function warming_environment(fxn_name){
+	console.log("Warming environment " + fxn_name)
+	const value = await get_metric(fxn_name, 'Invocations')
+	console.log(value)
+	return value
 }
 
 // NB: this could be made much better, but isn't the point
@@ -318,7 +350,7 @@ exports.handler = async (args, context) => {
 
 	switch (type){
 		case WARM_REQUEST:
-			return warming_environment()
+			return warming_environment(context.functionName)
 		case WORK_REQUEST:
 			return handle_message(context.functionName, run_id, worker_id)
 		case METRIC_REQUEST:
@@ -328,3 +360,5 @@ exports.handler = async (args, context) => {
 			return driver(context.functionName, memorySize)
 	}
 }
+
+// warming_environment('common-crawl-Worker-1E4N03GUT0MUX')
