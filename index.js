@@ -306,7 +306,7 @@ async function get_metric(fxn_name, metric) {
 	const results = await cloudwatch.getMetricData(params).promise()
 	const metricResults = results.MetricDataResults[0]
 	const values = metricResults.Values || []
-	return 0 !== values.length ? values[0] : 0
+	return 0 !== values.length ? values[0] : -1
 }
 
 async function warming_environment(fxn_name){
