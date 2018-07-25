@@ -19,7 +19,7 @@ const lambda = new AWS.Lambda()
 const BUCKET = process.env.CRAWL_INDEX_BUCKET || 'commoncrawl'
 const KEY = process.env.CRAWL_INDEX_KEY || 'crawl-data/CC-MAIN-2018-17/warc.paths.gz'
 
-const QUEUE_URL = process.env.QUEUE_URL
+const INPUT_URL = process.env.QUEUE_URL
 const METRIC_URL = process.env.METRIC_URL
 const MAX_WORKERS = process.env.MAX_WORKERS || 4
 const DEFAULT_REGEX = '(\([0-9]{3}\) |[0-9]{3}-)[0-9]{3}-[0-9]{4}'
@@ -27,6 +27,10 @@ const DEFAULT_REGEX_FLAGS = 'gm'
 const REGEX = new RegExp(process.env.REGEX || DEFAULT_REGEX, process.env.REGEX_FLAGS || DEFAULT_REGEX_FLAGS)
 
 const REQUEST_REGEX = new RegExp('\nWARC-Type: request', 'gm')
+
+const METRIC_REQUEST = 'metric'
+const WORK_REQUEST = 'work'
+const WARM_REQUEST = 'warm'
 
 async function sandbag(delay){
 	return new Promise(resolve => setTimeout(resolve, delay))
@@ -69,10 +73,10 @@ async function gunzipBuf(buffer) {
 	})
 }
 
-async function run_lambda(fxn_name, url, run_id, worker_id) {
+async function run_lambda(fxn_name, type, run_id, worker_id) {
 	const params = {
 		FunctionName: fxn_name,
-		Payload: JSON.stringify({ url, run_id, worker_id }),
+		Payload: JSON.stringify({ type, run_id, worker_id }),
 		InvocationType: 'Event'
 	}
 
@@ -100,7 +104,7 @@ async function driver(fxn_name, memorySize) {
 	const enqueues = lines.map(line => {
 		return sqs.sendMessage({
 			MessageBody: line,
-			QueueUrl : QUEUE_URL
+			QueueUrl : INPUT_URL
 		}).promise()
 		.catch(err => fatal("Unable to fully populate queue: " + err))
 	})
@@ -114,7 +118,7 @@ async function driver(fxn_name, memorySize) {
 	// the promises have all run, now we need to make sure SQS shows all of them
 	// or our lambdas may start and immediately be done
 	const attr_params = {
-		QueueUrl: QUEUE_URL,
+		QueueUrl: INPUT_URL,
 		AttributeNames: [ 'ApproximateNumberOfMessages' ]
 	}
 
@@ -131,7 +135,7 @@ async function driver(fxn_name, memorySize) {
 
 	const workers = []
 	for (var worker_id = 0; worker_id != MAX_WORKERS; worker_id++) {
-		workers.push(run_lambda(fxn_name, QUEUE_URL, run_id, worker_id))
+		workers.push(run_lambda(fxn_name, WORK_REQUEST, run_id, worker_id))
 	}
 
 	const metrics = [
@@ -147,11 +151,7 @@ async function driver(fxn_name, memorySize) {
 		.then(() => "All launched for " + run_id)
 }
 
-async function sandbag(url, path){
-	return new Promise(resolve => setTimeout(resolve, process.env.SANDBAG || 60000))
-}
-
-async function handle_path(url, path) {
+async function handle_path(path) {
 	const start_time = new Date().getTime()
 	const extractor = new Transform({
 		transform(chunk, encoding, callback) {
@@ -237,10 +237,6 @@ async function on_metrics(metrics, fxn_name, run_id){
 		'Namespace' : fxn_name
 	}
 
-	// We exceed putMetricData's sustainable rate here
-//	return cloudwatch.putMetricData(update).promise()
-//		.catch(err => annoying("Error putting metric data: " + err))
-
 	// ... so for now, shunt to this queue
 	return sqs.sendMessage({
 			MessageBody: JSON.stringify(update),
@@ -249,8 +245,8 @@ async function on_metrics(metrics, fxn_name, run_id){
 		.catch(err => fatal("Unable to send metric: " + err))
 }
 
-async function handle_message(fxn_name, url, run_id, worker_id) {
-	const response = await sqs.receiveMessage({ QueueUrl : url }).promise()
+async function handle_message(fxn_name, run_id, worker_id) {
+	const response = await sqs.receiveMessage({ QueueUrl : INPUT_URL }).promise()
 		.catch(err => fatal("Failed to receive message from queue: " + err))
 	const messages = response.Messages || []
 
@@ -263,22 +259,72 @@ async function handle_message(fxn_name, url, run_id, worker_id) {
 	}
 
 	for(const message of messages){
-		const metrics = await handle_path(url, message.Body)
-		await sqs.deleteMessage({ QueueUrl : url, ReceiptHandle: message.ReceiptHandle }).promise()
+		const metrics = await handle_path(message.Body)
+		await sqs.deleteMessage({ QueueUrl : INPUT_URL, ReceiptHandle: message.ReceiptHandle }).promise()
 			.catch(err => fatal("Failed to delete message from queue: " + err))
 		await on_metrics(metrics, fxn_name, run_id)
 	}
 
-	const run = await run_lambda(fxn_name, url, run_id, worker_id)
+	const run = await run_lambda(fxn_name, WORK_REQUEST, run_id, worker_id)
 	console.log(run)
 	return "All done"
 }
 
-exports.handler = async (args, context) => {
-	const { url, run_id, worker_id } = args
+async function persist_metric_batch(messages){
+	const data = []
+	for (const message of messages){
+		for (const metric_data of message.MetricData){
+			data.push(metric_data)
+		}
+	}
 
-	if (url){
-		return handle_message(context.functionName, url, run_id, worker_id)
+	const update = {
+		Namespace: messages[0].Namespace,
+		MetricData: data
+	}
+
+	return cloudwatch.putMetricData(update).promise()
+		.catch(err => annoying("Error putting metric data: " + err))
+}
+
+async function persist_metrics(){
+	while (true){
+		const response = await sqs.receiveMessage({ QueueUrl : METRIC_URL, MaxNumberOfMessages: 10 }).promise()
+			.catch(err => fatal("Failed to receive message from queue: " + err))
+		const messages = response.Messages || []
+
+		console.log("LEN: " + messages.length)
+		if (0 === messages.length){
+			break
+		}
+
+		const metrics = messages.map(message => {
+			const raw_payload = message.Body
+			return JSON.parse(raw_payload)
+		})
+
+		await persist_metric_batch(metrics)
+		await sandbag(10) // sandbag for 10ms so we do at most 100 / second
+/*
+		for (var message of messages){
+			await sqs.deleteMessage({ QueueUrl : METRIC_URL, ReceiptHandle: message.ReceiptHandle }).promise()
+				.catch(err => fatal("Failed to delete metric message from queue: " + err))
+		}
+		*/
+	}
+
+	return true
+}
+
+exports.handler = async (args, context) => {
+	const { type, run_id, worker_id } = args
+
+	if (WARM_REQUEST === type){
+		return "do warming"
+	} else if (WORK_REQUEST === type){
+		return handle_message(context.functionName, run_id, worker_id)
+	} else if (METRIC_REQUEST === type){
+		return persist_metrics()
 	} else {
 		const memorySize = parseInt(context.memoryLimitInMB)
 		return driver(context.functionName, memorySize)
