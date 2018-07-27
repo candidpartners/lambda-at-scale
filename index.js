@@ -219,6 +219,11 @@ function create_metric(key, value, unit){
 }
 
 async function on_metrics(metrics, fxn_name, run_id){
+
+	if (true){
+		return "nope"
+	}
+
 	const date = new Date()
 	const metricList = metrics.map(metric => {
 		console.log(metric.key, ' -> ', metric.value)
@@ -280,40 +285,27 @@ async function persist_metric_batch(messages){
 	return true
 }
 
-// get the most recent value for the last 5 minutes
-async function get_metric(fxn_name, metric) {
-	const now = Math.round(new Date().getTime() / 1000)
-	const params = {
-		StartTime: now - 300, // start looking in the last hour
-		EndTime: now,
-		MetricDataQueries: [
-			{
-				Id: 'm1',
-				MetricStat: {
-					Period: 60, // 1 minute rollups
-					Stat: 'SampleCount',
-					Unit: 'Count',
-					Metric: {
-						Namespace: 'AWS/Lambda',
-						Dimensions: [ { Name: 'FunctionName', Value: fxn_name } ],
-						MetricName: metric
-					}
-				}
-			}
-		]
-	}
-
-	const results = await cloudwatch.getMetricData(params).promise()
-	const metricResults = results.MetricDataResults[0]
-	const values = metricResults.Values || []
-	return 0 !== values.length ? values[0] : -1
-}
-
 async function warming_environment(fxn_name){
 	console.log("Warming environment " + fxn_name)
-	const value = await get_metric(fxn_name, 'Invocations')
-	console.log(value)
-	return value
+
+	const initial = process.env.INITIAL_WORKERS || 3000
+	const target = process.env.MAX_WORKERS || 50000
+	const step = process.env.SCALE_STEP || 500
+	const delay = process.env.SCALE_DELAY || 60
+
+	for (var current = initial; current < target; current += step){
+		const workers = []
+		for (var worker_id = 0; worker_id != current; worker_id++) {
+//			workers.push(() => run_lambda(fxn_name, SANDBAG_REQUEST))
+			workers.push(worker_id)
+		}
+
+		const iteration = 1 + (current - initial) / step
+		console.log(iteration + ": Spawned " + workers.length + " (of " + target + ") workers for warmup...")
+		await sandbag(delay * 1000)
+	}
+
+	return "Done"
 }
 
 // NB: this could be made much better, but isn't the point
@@ -349,8 +341,6 @@ exports.handler = async (args, context) => {
 	const { type, run_id, worker_id } = args
 
 	switch (type){
-		case WARM_REQUEST:
-			return warming_environment(context.functionName)
 		case WORK_REQUEST:
 			return handle_message(context.functionName, run_id, worker_id)
 		case METRIC_REQUEST:
@@ -361,4 +351,6 @@ exports.handler = async (args, context) => {
 	}
 }
 
-// warming_environment('common-crawl-Worker-1E4N03GUT0MUX')
+if (process.env.OPERATION === WARM_REQUEST){
+	warming_environment('common-crawl-Worker-1E4N03GUT0MUX').then(() => console.log("Warmed"))
+}
