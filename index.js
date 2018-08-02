@@ -219,11 +219,6 @@ function create_metric(key, value, unit){
 }
 
 async function on_metrics(metrics, fxn_name, run_id){
-
-	if (true){
-		return "nope"
-	}
-
 	const date = new Date()
 	const metricList = metrics.map(metric => {
 		console.log(metric.key, ' -> ', metric.value)
@@ -276,15 +271,6 @@ async function handle_message(fxn_name, run_id, worker_id) {
 	return "All done"
 }
 
-async function persist_metric_batch(messages){
-	for (const message of messages){
-		await cloudwatch.putMetricData(message).promise()
-			.catch(err => fatal("Error putting metric data: " + err))
-	}
-
-	return true
-}
-
 async function warming_environment(fxn_name){
 	console.log("Warming environment " + fxn_name)
 
@@ -308,11 +294,20 @@ async function warming_environment(fxn_name){
 	return "Done"
 }
 
+async function persist_metric_batch(messages){
+	for (const message of messages){
+		await cloudwatch.putMetricData(message).promise()
+			.catch(err => fatal("Error putting metric data: " + err))
+	}
+
+	return true
+}
+
 // NB: this could be made much better, but isn't the point
 async function persist_metrics(){
-	console.log("Persisting metrics")
 	while (true){
-		const response = await sqs.receiveMessage({ QueueUrl : METRIC_URL, MaxNumberOfMessages: 10 }).promise()
+		const response = await sqs.receiveMessage({ QueueUrl : METRIC_URL, MaxNumberOfMessages: 10 })
+			.promise()
 			.catch(err => fatal("Failed to receive message from queue: " + err))
 		const messages = response.Messages || []
 
@@ -329,7 +324,8 @@ async function persist_metrics(){
 		await sandbag(10) // sandbag for 10ms so we do at most 100 / second
 
 		for (var message of messages){
-			await sqs.deleteMessage({ QueueUrl : METRIC_URL, ReceiptHandle: message.ReceiptHandle }).promise()
+			await sqs.deleteMessage({ QueueUrl : METRIC_URL, ReceiptHandle: message.ReceiptHandle })
+				.promise()
 				.catch(err => fatal("Failed to delete metric message from queue: " + err))
 		}
 	}
@@ -343,14 +339,15 @@ exports.handler = async (args, context) => {
 	switch (type){
 		case WORK_REQUEST:
 			return handle_message(context.functionName, run_id, worker_id)
-		case METRIC_REQUEST:
-			return persist_metrics()
 		case START_REQUEST:
 			const memorySize = parseInt(context.memoryLimitInMB)
 			return driver(context.functionName, memorySize)
 	}
 }
 
-if (process.env.OPERATION === WARM_REQUEST){
-	warming_environment('common-crawl-Worker-1E4N03GUT0MUX').then(() => console.log("Warmed"))
+switch (process.env.OPERATION){
+	case WARM_REQUEST:
+		return warming_environment('common-crawl-Worker-1E4N03GUT0MUX').then(() => console.log("Warmed"))
+	case METRIC_REQUEST:
+		return persist_metrics()
 }
