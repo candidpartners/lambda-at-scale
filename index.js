@@ -32,6 +32,7 @@ const METRIC_REQUEST = 'metric'
 const WORK_REQUEST = 'work'
 const WARM_REQUEST = 'warm'
 const START_REQUEST = 'start'
+const SANDBAG_REQUEST = 'sandbag'
 
 async function sandbag(delay){
 	return new Promise(resolve => setTimeout(resolve, delay))
@@ -275,17 +276,17 @@ async function warming_environment(fxn_name){
 	console.log("Warming environment " + fxn_name)
 
 	const initial = process.env.INITIAL_WORKERS || 3000
-	const target = process.env.MAX_WORKERS || 50000
+	const target = process.env.MAX_WORKERS || 4000
 	const step = process.env.SCALE_STEP || 500
-	const delay = process.env.SCALE_DELAY || 60
+	const delay = process.env.SCALE_DELAY || 59
 
-	for (var current = initial; current < target; current += step){
+	for (var current = initial; current <= target; current += step){
 		const workers = []
-		for (var worker_id = 0; worker_id != current; worker_id++) {
-//			workers.push(() => run_lambda(fxn_name, SANDBAG_REQUEST))
-			workers.push(worker_id)
+		for (var worker_id = 0; worker_id < current; worker_id++) {
+			workers.push(run_lambda(fxn_name, SANDBAG_REQUEST))
 		}
 
+		await Promise.all(workers)
 		const iteration = 1 + (current - initial) / step
 		console.log(iteration + ": Spawned " + workers.length + " (of " + target + ") workers for warmup...")
 		await sandbag(delay * 1000)
@@ -333,10 +334,23 @@ async function persist_metrics(){
 	return true
 }
 
+async function console_driver(){
+	switch (process.env.OPERATION){
+		case WARM_REQUEST:
+			await warming_environment(process.env.FXN_NAME).then(() => console.log("Warmed"))
+//			await run_lambda(process.env.FXN_NAME, START_REQUEST)
+			console.log("Warmed and launched!")
+		case METRIC_REQUEST:
+			return persist_metrics()
+	}
+}
+
 exports.handler = async (args, context) => {
 	const { type, run_id, worker_id } = args
 
 	switch (type){
+		case SANDBAG_REQUEST:
+			return await sandbag(60 * 1000)
 		case WORK_REQUEST:
 			return handle_message(context.functionName, run_id, worker_id)
 		case START_REQUEST:
@@ -345,9 +359,6 @@ exports.handler = async (args, context) => {
 	}
 }
 
-switch (process.env.OPERATION){
-	case WARM_REQUEST:
-		return warming_environment('common-crawl-Worker-1E4N03GUT0MUX').then(() => console.log("Warmed"))
-	case METRIC_REQUEST:
-		return persist_metrics()
+if (process.env.OPERATION){
+	console_driver()
 }
