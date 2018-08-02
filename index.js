@@ -337,18 +337,11 @@ function get_run_id(){
 	return crypto.randomBytes(16).toString("hex")
 }
 
-async function purge_queues(){
-	await sqs.purgeQueue({ QueueUrl : METRIC_URL }).promise()
-	await sqs.purgeQueue({ QueueUrl : INPUT_URL }).promise()
-	console.log("Purged queues")
-}
-
 async function console_driver(){
 	switch (process.env.OPERATION){
 		case WARM_REQUEST:
 			const run_id = get_run_id()
 			console.log("Warming/Starting " + run_id)
-			await purge_queues()
 			await warming_environment(process.env.FXN_NAME)
 //			await run_lambda(process.env.FXN_NAME, START_REQUEST, run_id)
 			console.log("Purged, Warmed and launched!")
