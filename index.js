@@ -338,6 +338,8 @@ function get_run_id(){
 }
 
 async function purge_queues(){
+	await sqs.purgeQueue({ QueueUrl : METRIC_URL }).promise()
+	await sqs.purgeQueue({ QueueUrl : INPUT_URL }).promise()
 	console.log("Purged queues")
 }
 
