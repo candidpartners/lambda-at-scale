@@ -272,7 +272,7 @@ async function handle_message(fxn_name, run_id, worker_id) {
 }
 
 async function warming_environment(fxn_name){
-	console.log("Warming environment " + fxn_name)
+	console.log("Warming environment " + fxn_name + ", starting at " + new Date())
 
 	const initial = process.env.INITIAL_WORKERS || 3000
 	const target = process.env.MAX_WORKERS || 4000
@@ -287,7 +287,7 @@ async function warming_environment(fxn_name){
 
 		await Promise.all(workers)
 		const iteration = 1 + (current - initial) / step
-		console.log(iteration + ": Spawned " + workers.length + " (of " + target + ") workers for warmup...")
+		console.log(iteration + " : " + new Date() + ": Spawned " + workers.length + " (of " + target + ") workers for warmup...")
 		await sandbag(delay * 1000)
 	}
 
