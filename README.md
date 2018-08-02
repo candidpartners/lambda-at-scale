@@ -20,6 +20,5 @@ Run the dashboard script with the run id and the lambda size to generate a URL t
 - configure lambda size in aws console
 - purge the sqs queues
 - FXN_NAME=foo MAX_WORKERS=5000 OPERATION=warm nodejs index.js
-- run the test immediately before the warmed lambdas cool
 - METRIC_URL=url OPERATION=metric nodejs index.js
 
