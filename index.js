@@ -86,9 +86,8 @@ async function run_lambda(fxn_name, type, run_id, worker_id) {
 		.catch(err => fatal('Something went wrong invoking lambda ' + err))
 }
 
-async function driver(fxn_name, memorySize) {
+async function driver(fxn_name, memorySize, run_id) {
 	const start_time = new Date().getTime()
-	const run_id = crypto.randomBytes(16).toString("hex")
 
 	console.log("Starting ", fxn_name, run_id)
 
@@ -334,11 +333,17 @@ async function persist_metrics(){
 	return true
 }
 
+function get_run_id(){
+	return crypto.randomBytes(16).toString("hex")
+}
+
 async function console_driver(){
 	switch (process.env.OPERATION){
 		case WARM_REQUEST:
+			const run_id = get_run_id()
+			console.log("Warming/Starting " + run_id)
 			await warming_environment(process.env.FXN_NAME).then(() => console.log("Warmed"))
-//			await run_lambda(process.env.FXN_NAME, START_REQUEST)
+//			await run_lambda(process.env.FXN_NAME, START_REQUEST, run_id)
 			console.log("Warmed and launched!")
 		case METRIC_REQUEST:
 			return persist_metrics()
@@ -355,7 +360,9 @@ exports.handler = async (args, context) => {
 			return handle_message(context.functionName, run_id, worker_id)
 		case START_REQUEST:
 			const memorySize = parseInt(context.memoryLimitInMB)
-			return driver(context.functionName, memorySize)
+			// if we have a run id, use it, else, make one
+			const id = run_id || get_run_id()
+			return driver(context.functionName, memorySize, id)
 	}
 }
 
