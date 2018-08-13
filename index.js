@@ -334,7 +334,7 @@ async function persist_metrics(){
 }
 
 function get_run_id(){
-	return crypto.randomBytes(16).toString("hex")
+	return crypto.randomBytes(4).toString("hex")
 }
 
 async function console_driver(){
@@ -343,8 +343,9 @@ async function console_driver(){
 			const run_id = get_run_id()
 			console.log("Warming/Starting " + run_id)
 			await warming_environment(process.env.FXN_NAME)
-//			await run_lambda(process.env.FXN_NAME, START_REQUEST, run_id)
+			await run_lambda(process.env.FXN_NAME, START_REQUEST, run_id)
 			console.log("Purged, Warmed and launched!")
+			break
 		case METRIC_REQUEST:
 			return persist_metrics()
 	}
