@@ -3,7 +3,6 @@
 const AWS = require('aws-sdk')
 
 // should be good enough to give us a id w/o collisions and not require a uuid lib
-const crypto = require('crypto')
 
 AWS.config.update({region: 'us-east-1'}); // TODO: pull from environment or something
 
@@ -87,7 +86,7 @@ async function run_lambda(fxn_name, type, run_id, worker_id) {
 }
 
 async function driver(fxn_name, memorySize, run_id) {
-	const start_time = new Date().getTime()
+	const full_start_time = new Date().getTime()
 
 	console.log("Starting ", fxn_name, run_id)
 
@@ -134,13 +133,17 @@ async function driver(fxn_name, memorySize, run_id) {
 		console.log("Waiting for messages to show in SQS, see " + ready + ", want " + lines.length)
 	}
 
+	const start_time = new Date().getTime()
 	const workers = []
 	for (var worker_id = 0; worker_id != MAX_WORKERS; worker_id++) {
 		workers.push(run_lambda(fxn_name, WORK_REQUEST, run_id, worker_id))
 	}
+	const launch_start_time = new Date().getTime()
 
 	const metrics = [
 		create_metric('memory_size', memorySize, 'Megabytes'),
+		create_metric('full_start_time', full_start_time, 'Milliseconds'),
+		create_metric('launch_start_time', launch_start_time, 'Milliseconds'),
 		create_metric('start_time', start_time, 'Milliseconds'),
 		create_metric('total_workers', workers.length),
 		create_metric('total_chunks', lines.length)
@@ -334,7 +337,8 @@ async function persist_metrics(){
 }
 
 function get_run_id(){
-	return crypto.randomBytes(4).toString("hex")
+	const epoch = new Date()
+	return "" + Math.floor(epoch.getTime() / 1000)
 }
 
 async function console_driver(){
