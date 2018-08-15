@@ -32,6 +32,7 @@ const WORK_REQUEST = 'work'
 const WARM_REQUEST = 'warm'
 const START_REQUEST = 'start'
 const SANDBAG_REQUEST = 'sandbag'
+const SINGLE_REQUEST = 'single'
 
 async function sandbag(delay){
 	return new Promise(resolve => setTimeout(resolve, delay))
@@ -155,7 +156,12 @@ async function driver(fxn_name, memorySize, run_id) {
 		.then(() => "All launched for " + run_id)
 }
 
-async function handle_path(path) {
+async function handle_stream(stream){
+	var uncompressed_bytes = 0
+	var compressed_bytes = 0
+	var total_requests = 0
+	var count = 0
+
 	const start_time = new Date().getTime()
 	const extractor = new Transform({
 		transform(chunk, encoding, callback) {
@@ -167,18 +173,8 @@ async function handle_path(path) {
 	})
 
 	const gunzipper = zlib.createGunzip()
-	const params = {
-		Bucket : BUCKET,
-		Key : path
-	}
 
-	console.log("Streaming ", params)
-
-	var uncompressed_bytes = 0
-	var compressed_bytes = 0
-	var total_requests = 0
-	var count = 0
-	const stream = s3.getObject(params).createReadStream()
+	stream
 		.on('error', err => console.log("Stream error", err))
 		.on('data', data => compressed_bytes += data.length)
 		.pipe(gunzipper)
@@ -204,6 +200,7 @@ async function handle_path(path) {
 	// we're measuring time internally, this isn't 100%, but go ahead
 	// and round up to the nearest 100ms
 	const elapsed = Math.ceil((now - start_time) / 100) * 100
+
 	return [
 		create_metric('regex_hits', count),
 		create_metric('total_requests', total_requests),
@@ -211,6 +208,18 @@ async function handle_path(path) {
 		create_metric('uncompressed_bytes', uncompressed_bytes, 'Bytes'),
 		create_metric('elapsed_ms', elapsed, 'Milliseconds')
 	]
+
+}
+
+async function handle_path(path) {
+	const params = {
+		Bucket : BUCKET,
+		Key : path
+	}
+
+	console.log("Streaming ", params)
+	const stream = s3.getObject(params).createReadStream()
+	return handle_stream(stream)
 }
 
 function create_metric(key, value, unit){
@@ -275,13 +284,12 @@ async function handle_message(fxn_name, run_id, worker_id) {
 }
 
 async function warming_environment(fxn_name){
-	console.log("Warming environment " + fxn_name + ", starting at " + new Date())
-
 	const initial = process.env.INITIAL_WORKERS || 3000
 	const target = process.env.MAX_WORKERS || 4000
 	const step = process.env.SCALE_STEP || 500
 	const delay = process.env.SCALE_DELAY || 59
 
+	console.log("Warming environment " + fxn_name + " to " + target + ", starting at " + new Date())
 	for (var current = initial; current <= target; current += step){
 		const workers = []
 		for (var worker_id = 0; worker_id < current; worker_id++) {
@@ -324,7 +332,7 @@ async function persist_metrics(){
 		})
 
 		await persist_metric_batch(metrics)
-		await sandbag(10) // sandbag for 10ms so we do at most 100 / second
+		await sandbag(1) // sandbag for 10ms so we do at most 100 / second
 
 		for (var message of messages){
 			await sqs.deleteMessage({ QueueUrl : METRIC_URL, ReceiptHandle: message.ReceiptHandle })
@@ -341,8 +349,8 @@ function get_run_id(){
 	return "" + Math.floor(epoch.getTime() / 1000)
 }
 
-async function console_driver(){
-	switch (process.env.OPERATION){
+async function console_driver(operation){
+	switch (operation){
 		case WARM_REQUEST:
 			const run_id = get_run_id()
 			console.log("Warming/Starting " + run_id)
@@ -352,6 +360,12 @@ async function console_driver(){
 			break
 		case METRIC_REQUEST:
 			return persist_metrics()
+		case SINGLE_REQUEST:
+			const name = process.env.SINGLE_BUNDLE
+			const stream = require('fs').createReadStream(name)
+			const results = await handle_stream(stream)
+			console.log(results)
+			return results
 	}
 }
 
@@ -368,9 +382,12 @@ exports.handler = async (args, context) => {
 			// if we have a run id, use it, else, make one
 			const id = run_id || get_run_id()
 			return driver(context.functionName, memorySize, id)
+		case SINGLE_REQUEST:
+			const name = process.env.SINGLE_BUNDLE
+			return handle_path(name)
 	}
 }
 
-if (process.env.OPERATION){
-	console_driver()
+if (!module.parent && process.env.OPERATION){
+	console_driver(process.env.OPERATION)
 }
