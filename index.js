@@ -34,6 +34,8 @@ const START_REQUEST = 'start'
 const SANDBAG_REQUEST = 'sandbag'
 const SINGLE_REQUEST = 'single'
 
+let invocations = 0
+
 async function sandbag(delay){
 	return new Promise(resolve => setTimeout(resolve, delay))
 }
@@ -165,35 +167,66 @@ async function handle_stream(stream){
 	const start_time = new Date().getTime()
 	const extractor = new Transform({
 		transform(chunk, encoding, callback) {
-			const raw_matches = chunk.toString().match(REGEX)
-			const matches = raw_matches || []
-			matches.forEach(data => this.push(data))
-			callback()
+			try {
+				const matches = chunk.toString().match(REGEX) || []
+				matches.forEach(data => this.push(data))
+			} catch (error){
+				annoying("Failed to extract: " + error)
+			} finally {
+				callback()
+			}
 		}
 	})
 
 	const gunzipper = zlib.createGunzip()
+	let data_ts = 0
 
-	stream
-		.on('error', err => console.log("Stream error", err))
-		.on('data', data => compressed_bytes += data.length)
-		.pipe(gunzipper)
-		.on('data', data => {
-			// technically our stream could split our request
-			// marker, but that will be rare, and over the total
-			// number of requests we have we should be ok
-			const requests = data.toString().match(REQUEST_REGEX) || []
-			total_requests += requests.length
-		})
-		.on('data', data => uncompressed_bytes += data.length)
-		.pipe(extractor)
-		.on('data', data => count++)
+	const log_traffic = () => {
+		const ts = new Date().getTime() / 1000
+		const elapsed = ts - data_ts
+		if (10 <= elapsed){
+			console.log("Received data: " + compressed_bytes)
+			data_ts = ts
+		}
+	}
 
-	// wait for the stream to finish, probably a better idiom to use
-	await new Promise((resolve, reject) => {
-		stream.on("end", () => {
-			resolve("complete")
-		})
+	await new Promise((resolve, _reject) => {
+		const reject = message => {
+			console.log("Failed: " + message)
+			_reject(message)
+		}
+
+		const gunzipStream = stream
+			.on('error', err => reject("GZip stream error " + err))
+			.on('data', log_traffic)
+			.on('data', data => compressed_bytes += data.length)
+			.on('end', () => console.log("End of base stream"))
+			.pipe(gunzipper)
+
+		const extractorStream = gunzipStream
+			.on('error', err => reject("Extract stream error " + err))
+			.on('data', data => {
+				// technically our stream could split our request
+				// marker, but that will be rare, and over the total
+				// number of requests we have we should be ok
+				try {
+					const requests = data.toString().match(REQUEST_REGEX) || []
+					total_requests += requests.length
+				} catch (error) {
+					annoying("Failed to match batches: " + error)
+				}
+			})
+			.on('data', data => uncompressed_bytes += data.length)
+			.on('end', () => console.log("End of gzip stream"))
+			.pipe(extractor)
+
+		const extractedStream = extractorStream
+			.on('error', err => reject("Extracted stream error " + err))
+			.on('data', data => count++)
+			.on('end', () => {
+				console.log("Streaming complete")
+				resolve("complete")
+			})
 	})
 
 	const now = new Date().getTime()
@@ -264,12 +297,15 @@ async function handle_message(fxn_name, run_id, worker_id) {
 	const messages = response.Messages || []
 
 	// we're at the end of our queue, so send our done time
-	if (0 == messages.length){
+	// sometimes SQS gives us no work when we hammer it, so try a couple times before give up
+	if (0 == messages.length && 0 !== invocations){
 		console.log(worker_id + ": No work to do")
 		const metric = create_metric('end_time', new Date().getTime(), 'Milliseconds')
 		await on_metrics([metric], fxn_name, run_id)
 		return "All done"
 	}
+
+	invocations++
 
 	for(const message of messages){
 		const metrics = await handle_path(message.Body)
@@ -332,7 +368,6 @@ async function persist_metrics(){
 		})
 
 		await persist_metric_batch(metrics)
-		await sandbag(1) // sandbag for 10ms so we do at most 100 / second
 
 		for (var message of messages){
 			await sqs.deleteMessage({ QueueUrl : METRIC_URL, ReceiptHandle: message.ReceiptHandle })

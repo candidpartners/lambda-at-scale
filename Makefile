@@ -18,7 +18,7 @@ AWS=aws --profile $(AWS_PROFILE)
 $(STAMP_SETUP): | $(OUT)
 	npm i --prefix $(OUT) aws-sdk
 
-$(INDEX_ZIP): index.js | $(OUT)
+$(INDEX_ZIP): index.js tags | $(OUT)
 	nodejs -c $<
 	zip $@ $<
 
@@ -53,6 +53,9 @@ destroy:
 
 test: | $(OUT)
 	$(AWS) lambda invoke --function-name $(FXN_NAME) --invocation-type Event $(OUT)/test.$(shell date +%s)
+
+tags: index.js
+	ctags --recurse=yes .
 
 $(OUT):
 	mkdir -p $@
