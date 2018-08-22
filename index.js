@@ -197,14 +197,14 @@ async function handle_stream(stream){
 		}
 
 		const gunzipStream = stream
-			.on('error', err => reject("GZip stream error " + err))
+			.on('error', err => fatal("GZip stream error " + err))
 			.on('data', log_traffic)
 			.on('data', data => compressed_bytes += data.length)
 			.on('end', () => console.log("End of base stream"))
 			.pipe(gunzipper)
 
 		const extractorStream = gunzipStream
-			.on('error', err => reject("Extract stream error " + err))
+			.on('error', err => fatal("Extract stream error " + err))
 			.on('data', data => {
 				// technically our stream could split our request
 				// marker, but that will be rare, and over the total
@@ -221,7 +221,7 @@ async function handle_stream(stream){
 			.pipe(extractor)
 
 		const extractedStream = extractorStream
-			.on('error', err => reject("Extracted stream error " + err))
+			.on('error', err => fatal("Extracted stream error " + err))
 			.on('data', data => count++)
 			.on('end', () => {
 				console.log("Streaming complete")
@@ -250,8 +250,13 @@ async function handle_path(path) {
 		Key : path
 	}
 
-	console.log("Streaming ", params)
-	const stream = s3.getObject(params).createReadStream()
+	const stream = s3.getObject(params)
+		.on('httpHeaders', (code, headers) => {
+			const requestId = headers['x-amz-request-id']
+			const amzId = headers['x-amz-id-2']
+			console.log("Streaming as x-amz-id-2=" + amzId + ", x-amz-request-id=" + requestId + "/" + JSON.stringify(params))
+		}).createReadStream()
+
 	return handle_stream(stream)
 }
 
@@ -308,7 +313,15 @@ async function handle_message(fxn_name, run_id, worker_id) {
 	invocations++
 
 	for(const message of messages){
-		const metrics = await handle_path(message.Body)
+		let metrics = []
+		try {
+			metrics = await handle_path(message.Body)
+		} catch (error) {
+			annoying("Failed to handle path: " + error)
+			await sqs.changeMessageVisibility({ QueueUrl : INPUT_URL, ReceiptHandle: message.ReceiptHandle, VisibilityTimeout: 0 }).promise()
+				.catch(err => annoying("Failed to reset the visibility: " + err))
+			break // don't delete, punt immediately
+		}
 		await sqs.deleteMessage({ QueueUrl : INPUT_URL, ReceiptHandle: message.ReceiptHandle }).promise()
 			.catch(err => fatal("Failed to delete message from queue: " + err))
 		await on_metrics(metrics, fxn_name, run_id)
