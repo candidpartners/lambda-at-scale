@@ -414,6 +414,7 @@ exports.sqs_driver = async (event, context) => {
 	for (let record of records){
 		const body = record.body
 		const metrics = await handle_path(body)
+		metrics.push(create_metric('end_time', new Date().getTime(), 'Milliseconds'))
 		await on_metrics(metrics, context.functionName, process.env.RUN_ID)
 	}
 }
