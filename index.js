@@ -283,7 +283,7 @@ function create_metric(key, value, unit){
 async function on_metrics(metrics, fxn_name, run_id){
 	const date = new Date()
 	const metricList = metrics.map(metric => {
-		console.log(metric.key, ' -> ', metric.value)
+		console.log(metric.key + "." + run_id, ' -> ', metric.value)
 		return {
 			MetricName: metric.key,
 			Dimensions: [
@@ -414,7 +414,7 @@ exports.sqs_driver = async (event, context) => {
 	for (let record of records){
 		const body = record.body
 		const metrics = await handle_path(body)
-		await on_metrics(metrics, context.functionName, '0')
+		await on_metrics(metrics, context.functionName, process.env.RUN_ID)
 	}
 }
 
