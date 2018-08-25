@@ -149,7 +149,6 @@ async function driver(fxn_name, memorySize, run_id) {
 	const lines = await populate_queue()
 	await await_queue(lines.length)
 
-	const start_time = new Date().getTime()
 	const workers = []
 	for (var worker_id = 0; worker_id != MAX_WORKERS; worker_id++) {
 		workers.push(run_lambda(fxn_name, WORK_REQUEST, run_id, worker_id))
@@ -160,7 +159,6 @@ async function driver(fxn_name, memorySize, run_id) {
 		create_metric('memory_size', memorySize, 'Megabytes'),
 		create_metric('full_start_time', full_start_time, 'Milliseconds'),
 		create_metric('launch_start_time', launch_start_time, 'Milliseconds'),
-		create_metric('start_time', start_time, 'Milliseconds'),
 		create_metric('total_workers', workers.length),
 		create_metric('total_chunks', lines.length)
 	]
@@ -248,6 +246,7 @@ async function handle_stream(stream){
 	const elapsed = Math.ceil((now - start_time) / 100) * 100
 
 	return [
+		create_metric('start_time', start_time, 'Milliseconds'),
 		create_metric('regex_hits', count),
 		create_metric('total_requests', total_requests),
 		create_metric('compressed_bytes', compressed_bytes, 'Bytes'),
@@ -422,7 +421,19 @@ exports.sqs_driver = async (event, context) => {
 async function console_driver(operation){
 	switch (operation){
 		case ENQUEUE_REQUEST:
-			populate_queue()
+			const full_start_time = new Date().getTime()
+			const lines = await populate_queue()
+			const launch_start_time = new Date().getTime()
+
+			const metrics = [
+				create_metric('memory_size', process.env.SIZE, 'Megabytes'),
+				create_metric('full_start_time', full_start_time, 'Milliseconds'),
+				create_metric('launch_start_time', launch_start_time, 'Milliseconds'),
+				create_metric('total_workers', process.env.MAX_WORKERS),
+				create_metric('total_chunks', lines.length)
+			]
+
+			await on_metrics(metrics, process.env.FXN_NAME, process.env.RUN_ID)
 			break
 		case WARM_REQUEST:
 			const run_id = get_run_id()
