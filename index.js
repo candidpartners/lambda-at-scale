@@ -27,6 +27,7 @@ const REGEX = new RegExp(process.env.REGEX || DEFAULT_REGEX, process.env.REGEX_F
 
 const REQUEST_REGEX = new RegExp('\nWARC-Type: request', 'gm')
 
+const ENQUEUE_REQUEST = 'enqueue'
 const METRIC_REQUEST = 'metric'
 const WORK_REQUEST = 'work'
 const WARM_REQUEST = 'warm'
@@ -88,11 +89,7 @@ async function run_lambda(fxn_name, type, run_id, worker_id) {
 		.catch(err => fatal('Something went wrong invoking lambda ' + err))
 }
 
-async function driver(fxn_name, memorySize, run_id) {
-	const full_start_time = new Date().getTime()
-
-	console.log("Starting ", fxn_name, run_id)
-
+async function populate_queue(){
 	const max = process.env.MAX_CHUNKS ? parseInt(process.env.MAX_CHUNKS) : 2
 
 	const content = await get_object(BUCKET, KEY)
@@ -104,6 +101,7 @@ async function driver(fxn_name, memorySize, run_id) {
 
 	const lines = input.slice(0, max).filter(data => 0 != data.length) // limit for now
 
+	console.log(`Populating with ${lines.length} archive entries`)
 	const enqueues = lines.map(line => {
 		return sqs.sendMessage({
 			MessageBody: line,
@@ -118,6 +116,11 @@ async function driver(fxn_name, memorySize, run_id) {
 	await Promise.all(enqueues)
 		.catch(err => fatal("Unable to enqueue all messages"))
 
+	// return what we did so we can wait for it
+	return lines
+}
+
+async function await_queue(target){
 	// the promises have all run, now we need to make sure SQS shows all of them
 	// or our lambdas may start and immediately be done
 	const attr_params = {
@@ -129,12 +132,22 @@ async function driver(fxn_name, memorySize, run_id) {
 		const results = await sqs.getQueueAttributes(attr_params).promise()
 			.catch(err => fatal("Unable to determine queue depth: " + err))
 		const ready = results.Attributes.ApproximateNumberOfMessages
-		if (ready >= lines.length){ // NB: type coercion here
+		if (ready >= target){ // NB: type coercion here
 			console.log("Queue reports " + ready + " messages available")
 			break
 		}
-		console.log("Waiting for messages to show in SQS, see " + ready + ", want " + lines.length)
+		console.log("Waiting for messages to show in SQS, see " + ready + ", want " + target)
 	}
+
+	return true
+}
+
+async function driver(fxn_name, memorySize, run_id) {
+	const full_start_time = new Date().getTime()
+
+	console.log("Starting ", fxn_name, run_id)
+	const lines = await populate_queue()
+	await await_queue(lines.length)
 
 	const start_time = new Date().getTime()
 	const workers = []
@@ -399,6 +412,9 @@ function get_run_id(){
 
 async function console_driver(operation){
 	switch (operation){
+		case ENQUEUE_REQUEST:
+			populate_queue()
+			break
 		case WARM_REQUEST:
 			const run_id = get_run_id()
 			console.log("Warming/Starting " + run_id)
