@@ -410,6 +410,15 @@ function get_run_id(){
 	return "" + Math.floor(epoch.getTime() / 1000)
 }
 
+exports.sqs_driver = async (event, context) => {
+	const records = event.Records || []
+	for (let record of records){
+		const body = record.body
+		const metrics = await handle_path(body)
+		await on_metrics(metrics, context.functionName, '0')
+	}
+}
+
 async function console_driver(operation){
 	switch (operation){
 		case ENQUEUE_REQUEST:
@@ -432,6 +441,8 @@ async function console_driver(operation){
 			return results
 	}
 }
+
+
 
 exports.handler = async (args, context) => {
 	const { type, run_id, worker_id } = args
