@@ -28,7 +28,6 @@ const REGEX = new RegExp(process.env.REGEX || DEFAULT_REGEX, process.env.REGEX_F
 const REQUEST_REGEX = new RegExp('\nWARC-Type: request', 'gm')
 
 const ENQUEUE_REQUEST = 'enqueue'
-const METRIC_REQUEST = 'metric'
 const WORK_REQUEST = 'work'
 const WARM_REQUEST = 'warm'
 const START_REQUEST = 'start'
@@ -367,39 +366,23 @@ async function warming_environment(fxn_name){
 	return "Done"
 }
 
+exports.metric_handler = async (event, context) => {
+	const records = event.Records || []
+
+	const metrics = records.map(record => {
+		const raw_payload = record.body
+		return JSON.parse(raw_payload)
+	})
+
+	console.log(JSON.stringify(metrics))
+	await persist_metric_batch(metrics)
+}
+
+
 async function persist_metric_batch(messages){
 	for (const message of messages){
 		await cloudwatch.putMetricData(message).promise()
 			.catch(err => fatal("Error putting metric data: " + err))
-	}
-
-	return true
-}
-
-// NB: this could be made much better, but isn't the point
-async function persist_metrics(){
-	while (true){
-		const response = await sqs.receiveMessage({ QueueUrl : METRIC_URL, MaxNumberOfMessages: 10 })
-			.promise()
-			.catch(err => fatal("Failed to receive message from queue: " + err))
-		const messages = response.Messages || []
-
-		if (0 === messages.length){
-			break
-		}
-
-		const metrics = messages.map(message => {
-			const raw_payload = message.Body
-			return JSON.parse(raw_payload)
-		})
-
-		await persist_metric_batch(metrics)
-
-		for (var message of messages){
-			await sqs.deleteMessage({ QueueUrl : METRIC_URL, ReceiptHandle: message.ReceiptHandle })
-				.promise()
-				.catch(err => fatal("Failed to delete metric message from queue: " + err))
-		}
 	}
 
 	return true
@@ -427,7 +410,7 @@ exports.sqs_driver = async (event, context) => {
 	const records = event.Records || []
 	for (let record of records){
 		const body = record.body
-		const metrics = await handle_path(body)
+		const metrics = []// await handle_path(body)
 		metrics.push(create_metric('end_time', new Date().getTime(), 'Milliseconds'))
 		await on_metrics(metrics, context.functionName, process.env.RUN_ID)
 	}
@@ -457,8 +440,6 @@ async function console_driver(operation){
 			await run_lambda(process.env.FXN_NAME, START_REQUEST, run_id)
 			console.log("Purged, Warmed and launched!")
 			break
-		case METRIC_REQUEST:
-			return persist_metrics()
 		case SINGLE_REQUEST:
 			const name = process.env.SINGLE_BUNDLE
 			const stream = require('fs').createReadStream(name)
