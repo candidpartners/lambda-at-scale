@@ -374,8 +374,8 @@ exports.metric_handler = async (event, context) => {
 		return JSON.parse(raw_payload)
 	})
 
-	console.log(JSON.stringify(metrics))
 	await persist_metric_batch(metrics)
+	console.log(`Inserted ${metrics.length} metrics`)
 }
 
 
@@ -410,7 +410,7 @@ exports.sqs_driver = async (event, context) => {
 	const records = event.Records || []
 	for (let record of records){
 		const body = record.body
-		const metrics = []// await handle_path(body)
+		const metrics = await handle_path(body)
 		metrics.push(create_metric('end_time', new Date().getTime(), 'Milliseconds'))
 		await on_metrics(metrics, context.functionName, process.env.RUN_ID)
 	}
