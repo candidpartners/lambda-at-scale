@@ -36,6 +36,7 @@ const SANDBAG_REQUEST = 'sandbag'
 const SINGLE_REQUEST = 'single'
 
 let invocations = 0
+let worker_id = 0
 
 async function sandbag(delay){
 	return new Promise(resolve => setTimeout(resolve, delay))
@@ -409,7 +410,20 @@ function get_run_id(){
 	return "" + Math.floor(epoch.getTime() / 1000)
 }
 
+async function report_worker(context){
+	// we need a metric we can count, the value doesn't matter much, we're just
+	// going to do a sample count on worker_id in cloudwatch
+	if (0 === worker_id){
+		worker_id = 1
+		const metrics = [create_metric('worker_id', worker_id, 'None')]
+		await on_metrics(metrics, context.functionName, process.env.RUN_ID)
+	}
+}
+
 exports.sqs_driver = async (event, context) => {
+	// if invoked from sqs, we need to si
+	await report_worker(context)
+
 	const records = event.Records || []
 	for (let record of records){
 		const body = record.body
