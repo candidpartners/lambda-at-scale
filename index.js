@@ -2,15 +2,12 @@
 
 const AWS = require('aws-sdk')
 
-// should be good enough to give us a id w/o collisions and not require a uuid lib
-
 AWS.config.update({region: 'us-east-1'}); // TODO: pull from environment or something
-
 
 const zlib = require('zlib')
 const { Transform } = require('stream');
 
-const cloudwatch = new AWS.CloudWatch()
+const cloudWatch = new AWS.CloudWatch()
 const s3 = new AWS.S3()
 const sqs = new AWS.SQS()
 const lambda = new AWS.Lambda()
@@ -27,15 +24,12 @@ const REGEX = new RegExp(process.env.REGEX || DEFAULT_REGEX, process.env.REGEX_F
 
 const REQUEST_REGEX = new RegExp('\nWARC-Type: request', 'gm')
 
-const ENQUEUE_REQUEST = 'enqueue'
 const WORK_REQUEST = 'work'
-const WARM_REQUEST = 'warm'
 const START_REQUEST = 'start'
-const SANDBAG_REQUEST = 'sandbag'
-const SINGLE_REQUEST = 'single'
+
+const ONE_MINUTE_MILLIS = 60 * 1000
 
 let invocations = 0
-let worker_id = 0
 
 async function sandbag(delay){
 	return new Promise(resolve => setTimeout(resolve, delay))
@@ -62,7 +56,7 @@ function fatal(err) {
 async function get_object(bucket, key) {
 	const params = { Bucket: bucket, Key : key }
 	return s3.getObject(params).promise()
-		.catch(err => fatal("Unable to get S3 data"))
+		.catch(err => fatal("Unable to get S3 data: " + err))
 
 }
 
@@ -78,10 +72,10 @@ async function gunzipBuf(buffer) {
 	})
 }
 
-async function run_lambda(fxn_name, type, run_id, worker_id) {
+async function run_lambda(fxn_name, type, run_id, worker_id, launch_count) {
 	const params = {
 		FunctionName: fxn_name,
-		Payload: JSON.stringify({ type, run_id, worker_id }),
+		Payload: JSON.stringify({ type, run_id, worker_id, launch_count }),
 		InvocationType: 'Event'
 	}
 
@@ -99,7 +93,7 @@ async function populate_queue(){
 	// mix things up so we can test random archives other than the first couple
 	const input = process.env.SHUFFLE ?  shuffle(all_archives) : all_archives
 
-	const lines = input.slice(0, max).filter(data => 0 != data.length) // limit for now
+	const lines = input.slice(0, max).filter(data => 0 !== data.length) // limit for now
 
 	console.log(`Populating with ${lines.length} archive entries`)
 	const enqueues = lines.map(line => {
@@ -114,7 +108,7 @@ async function populate_queue(){
 	// make sure we have our queue populated before we spin off
 	// workers or we may race
 	await Promise.all(enqueues)
-		.catch(err => fatal("Unable to enqueue all messages"))
+		.catch(err => fatal("Unable to enqueue all messages: " + err))
 
 	// return what we did so we can wait for it
 	return lines
@@ -142,38 +136,69 @@ async function await_queue(target){
 	return true
 }
 
-async function driver(fxn_name, memorySize, run_id) {
-	const full_start_time = new Date().getTime()
+function warm_target(launch_count){
+    const remaining = Math.max(0, MAX_WORKERS - launch_count)
+    const limit = 0 === launch_count ? 3000 : 500
+    return Math.min(limit, remaining)
+}
 
-	console.log("Starting ", fxn_name, run_id)
-	const lines = await populate_queue()
-	await await_queue(lines.length)
+async function driver(fxn_name, memorySize, run_id, launch_count) {
+    const full_start_time = new Date().getTime()
+    const first_run = 0 === launch_count
+
+    let lines = []
+    if (first_run) {
+        console.log("Starting ", fxn_name, run_id)
+        lines = await populate_queue()
+        await await_queue(lines.length)
+    }
+
+    const target = warm_target(launch_count)
 
 	const workers = []
-	for (var worker_id = 0; worker_id != MAX_WORKERS; worker_id++) {
-		workers.push(run_lambda(fxn_name, WORK_REQUEST, run_id, worker_id))
+	for (let worker_id = 0; worker_id !== target; worker_id++) {
+		workers.push(run_lambda(fxn_name, WORK_REQUEST, run_id, launch_count + worker_id))
 	}
-	const launch_start_time = new Date().getTime()
 
-	const metrics = [
-		create_metric('memory_size', memorySize, 'Megabytes'),
-		create_metric('full_start_time', full_start_time, 'Milliseconds'),
-		create_metric('launch_start_time', launch_start_time, 'Milliseconds'),
-		create_metric('total_workers', workers.length),
-		create_metric('total_chunks', lines.length)
-	]
-	await on_metrics(metrics, fxn_name, run_id)
+    if (first_run) {
+        const launch_start_time = new Date().getTime()
 
-	return Promise.all(workers)
+        const metrics = [
+            create_metric('memory_size', memorySize, 'Megabytes'),
+            create_metric('full_start_time', full_start_time, 'Milliseconds'),
+            create_metric('launch_start_time', launch_start_time, 'Milliseconds'),
+            create_metric('total_workers', MAX_WORKERS),
+            create_metric('total_chunks', lines.length)
+        ]
+
+        await on_metrics(metrics, fxn_name, run_id)
+    }
+
+    console.log("Waiting for " + workers.length + " workers to spin up...")
+	await Promise.all(workers)
 		.catch(err => fatal("Something went wrong starting workers: " + err))
 		.then(() => "All launched for " + run_id)
+
+    const current_count = target + launch_count
+    if (current_count >= MAX_WORKERS){
+       console.log(`All ${current_count} workers launched`)
+       return
+    }
+
+    // we want to launch every minute as close as possible
+    const next_run_time = full_start_time + ONE_MINUTE_MILLIS
+    const sleep_time = Math.max(0, next_run_time - new Date().getTime() )
+
+    await sandbag(sleep_time)
+    console.log(`Recursing with launch count of ${current_count}`)
+    return run_lambda(fxn_name, START_REQUEST, run_id, 0, current_count)
 }
 
 async function handle_stream(stream){
-	var uncompressed_bytes = 0
-	var compressed_bytes = 0
-	var total_requests = 0
-	var count = 0
+	let uncompressed_bytes = 0
+	let compressed_bytes = 0
+	let total_requests = 0
+	let count = 0
 
 	const start_time = new Date().getTime()
 	const extractor = new Transform({
@@ -233,7 +258,7 @@ async function handle_stream(stream){
 
 		const extractedStream = extractorStream
 			.on('error', err => fatal("Extracted stream error " + err))
-			.on('data', data => count++)
+			.on('data', () => count++)
 			.on('end', () => {
 				console.log("Streaming complete")
 				resolve("complete")
@@ -315,7 +340,7 @@ async function handle_message(fxn_name, run_id, worker_id) {
 
 	// we're at the end of our queue, so send our done time
 	// sometimes SQS gives us no work when we hammer it, so try a couple times before give up
-	if (0 == messages.length && 0 !== invocations){
+	if (0 === messages.length && 0 !== invocations){
 		console.log(worker_id + ": No work to do")
 		const metric = create_metric('end_time', new Date().getTime(), 'Milliseconds')
 		await on_metrics([metric], fxn_name, run_id)
@@ -344,29 +369,7 @@ async function handle_message(fxn_name, run_id, worker_id) {
 	return "All done"
 }
 
-async function warming_environment(fxn_name){
-	const initial = process.env.INITIAL_WORKERS || 3000
-	const target = process.env.MAX_WORKERS || 4000
-	const step = process.env.SCALE_STEP || 500
-	const delay = process.env.SCALE_DELAY || 59
-
-	console.log("Warming environment " + fxn_name + " to " + target + ", starting at " + new Date())
-	for (var current = initial; current <= target; current += step){
-		const workers = []
-		for (var worker_id = 0; worker_id < current; worker_id++) {
-			workers.push(run_lambda(fxn_name, SANDBAG_REQUEST))
-		}
-
-		await Promise.all(workers)
-		const iteration = 1 + (current - initial) / step
-		console.log(iteration + " : " + new Date() + ": Spawned " + workers.length + " (of " + target + ") workers for warmup...")
-		await sandbag(delay * 1000)
-	}
-
-	return "Done"
-}
-
-exports.metric_handler = async (event, context) => {
+exports.metric_handler = async (event) => {
 	const records = event.Records || []
 
 	const metrics = records.map(record => {
@@ -381,7 +384,7 @@ exports.metric_handler = async (event, context) => {
 
 async function persist_metric_batch(messages){
 	for (const message of messages){
-		await cloudwatch.putMetricData(message).promise()
+		await cloudWatch.putMetricData(message).promise()
 			.catch(err => fatal("Error putting metric data: " + err))
 	}
 
@@ -393,83 +396,17 @@ function get_run_id(){
 	return "" + Math.floor(epoch.getTime() / 1000)
 }
 
-async function report_worker(context){
-	// we need a metric we can count, the value doesn't matter much, we're just
-	// going to do a sample count on worker_id in cloudwatch
-	if (0 === worker_id){
-		worker_id = 1
-		const metrics = [create_metric('worker_id', worker_id, 'None')]
-		await on_metrics(metrics, context.functionName, process.env.RUN_ID)
-	}
-}
-
-exports.sqs_driver = async (event, context) => {
-	// if invoked from sqs, we need to si
-	await report_worker(context)
-
-	const records = event.Records || []
-	for (let record of records){
-		const body = record.body
-		const metrics = await handle_path(body)
-		metrics.push(create_metric('end_time', new Date().getTime(), 'Milliseconds'))
-		await on_metrics(metrics, context.functionName, process.env.RUN_ID)
-	}
-}
-
-async function console_driver(operation){
-	switch (operation){
-		case ENQUEUE_REQUEST:
-			const full_start_time = new Date().getTime()
-			const lines = await populate_queue()
-			const launch_start_time = new Date().getTime()
-
-			const metrics = [
-				create_metric('memory_size', process.env.SIZE, 'Megabytes'),
-				create_metric('full_start_time', full_start_time, 'Milliseconds'),
-				create_metric('launch_start_time', launch_start_time, 'Milliseconds'),
-				create_metric('total_workers', process.env.MAX_WORKERS),
-				create_metric('total_chunks', lines.length)
-			]
-
-			await on_metrics(metrics, process.env.FXN_NAME, process.env.RUN_ID)
-			break
-		case WARM_REQUEST:
-			const run_id = get_run_id()
-			console.log("Warming/Starting " + run_id)
-			await warming_environment(process.env.FXN_NAME)
-			await run_lambda(process.env.FXN_NAME, START_REQUEST, run_id)
-			console.log("Purged, Warmed and launched!")
-			break
-		case SINGLE_REQUEST:
-			const name = process.env.SINGLE_BUNDLE
-			const stream = require('fs').createReadStream(name)
-			const results = await handle_stream(stream)
-			console.log(results)
-			return results
-	}
-}
-
-
-
 exports.handler = async (args, context) => {
-	const { type, run_id, worker_id } = args
+	const { type, run_id, worker_id, launch_count } = args
 
 	switch (type){
-		case SANDBAG_REQUEST:
-			return await sandbag(60 * 1000)
 		case WORK_REQUEST:
 			return handle_message(context.functionName, run_id, worker_id)
 		case START_REQUEST:
 			const memorySize = parseInt(context.memoryLimitInMB)
 			// if we have a run id, use it, else, make one
 			const id = run_id || get_run_id()
-			return driver(context.functionName, memorySize, id)
-		case SINGLE_REQUEST:
-			const name = process.env.SINGLE_BUNDLE
-			return handle_path(name)
+			return driver(context.functionName, memorySize, id, launch_count || 0)
 	}
 }
 
-if (!module.parent && process.env.OPERATION){
-	console_driver(process.env.OPERATION)
-}
