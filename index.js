@@ -155,6 +155,7 @@ async function driver(fxn_name, memorySize, run_id, launch_count) {
 
     const target = warm_target(launch_count)
 
+	console.log(`Launching ${target} workers`)
 	const workers = []
 	for (let worker_id = 0; worker_id !== target; worker_id++) {
 		workers.push(run_lambda(fxn_name, WORK_REQUEST, run_id, launch_count + worker_id))
