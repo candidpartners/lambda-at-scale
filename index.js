@@ -181,8 +181,8 @@ async function driver(fxn_name, memorySize, run_id, launch_count) {
 		.then(() => "All launched for " + run_id)
 
     const current_count = target + launch_count
-    if (current_count >= MAX_WORKERS){
-       console.log(`All ${current_count} workers launched`)
+    if (0 === target){
+       console.log(`All workers launched`)
        return
     }
 
@@ -392,11 +392,6 @@ async function persist_metric_batch(messages){
 	return true
 }
 
-function get_run_id(){
-	const epoch = new Date()
-	return "" + Math.floor(epoch.getTime() / 1000)
-}
-
 exports.handler = async (args, context) => {
 	const { type, run_id, worker_id, launch_count } = args
 
@@ -406,7 +401,7 @@ exports.handler = async (args, context) => {
 		case START_REQUEST:
 			const memorySize = parseInt(context.memoryLimitInMB)
 			// if we have a run id, use it, else, make one
-			const id = run_id || get_run_id()
+			const id = process.env.RUN_ID || run_id
 			return driver(context.functionName, memorySize, id, launch_count || 0)
 	}
 }
