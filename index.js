@@ -138,7 +138,9 @@ async function await_queue(target){
 
 function warm_target(launch_count){
     const remaining = Math.max(0, MAX_WORKERS - launch_count)
-    const limit = 0 === launch_count ? 3000 : 500
+    const initial = process.env.INITIAL_COUNT || 3000
+    const step = process.env.INCREMENT_STEP || 500
+    const limit = 0 === launch_count ? initial : step
     return Math.min(limit, remaining)
 }
 
