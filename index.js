@@ -371,7 +371,7 @@ async function handle_message(fxn_name, run_id, worker_id, end_time) {
         const panic_time = end_time - new Date().getTime()
 
         // with high concurrency, S3 gets mad causing timeouts, this handles that for us by pushing the message back on the queue
-        const timer = setTimeout(() => setVisibilityTimeout(message, 0), panic_time)
+        const timer = setTimeout(async () => await setVisibilityTimeout(message, 0), panic_time)
         try {
             const message_metrics = await handle_path(message.Body)
             metrics.push(create_metric("metrics_handled", 1))
