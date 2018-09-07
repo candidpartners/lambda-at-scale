@@ -147,10 +147,12 @@ async function warm_target(launch_count){
     const initial = process.env.INITIAL_COUNT || 3000
     const step = process.env.INCREMENT_STEP || 500
     const limit = 0 === launch_count ? initial : step
+    // if we don't have a full step to do, do what we need
     const full_limit = Math.min(limit, remaining)
 
     // if our queue is empty then we don't want spin any more up,
     // or if we have half the increment step in the queue, don't spin up the full step
+    console.log(`Calculating warm target from ${limit}, ${remaining} and ${depth}`)
     return Math.min(full_limit, depth)
 }
 
@@ -291,7 +293,6 @@ async function handle_stream(stream){
         create_metric('uncompressed_bytes', uncompressed_bytes, 'Bytes'),
         create_metric('elapsed_ms', elapsed, 'Milliseconds')
     ]
-
 }
 
 async function handle_path(path) {
@@ -370,7 +371,7 @@ async function handle_message(fxn_name, run_id, worker_id, end_time) {
     invocations++
 
     for(const message of messages){
-        const metrics = [create_metric('messages_attempted', 1)]
+        let metrics = [create_metric('messages_attempted', 1)]
 
         // if we aren't done by panic_time then we need to push the message back
         const panic_time = end_time - new Date().getTime()
@@ -380,7 +381,7 @@ async function handle_message(fxn_name, run_id, worker_id, end_time) {
         try {
             const message_metrics = await handle_path(message.Body)
             metrics.push(create_metric("metrics_handled", 1))
-            metrics.concat(message_metrics)
+            metrics = metrics.concat(message_metrics)
             clearTimeout(timer)
         } catch (error) {
             metrics.push(create_metric("messages_error", 1))
