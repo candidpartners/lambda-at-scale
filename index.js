@@ -423,7 +423,7 @@ exports.handler = async (args, context) => {
 
     // peel off N seconds to give us a bit of a buffer for the event to clear and code to run
     const grace_period = process.env.PANIC_GRACE_PERIOD || 3000
-    const end_time = new Date().getTime() + context.getTimeRemainingInMillis() - grace_period
+    const end_time = new Date().getTime() + context.getRemainingTimeInMillis() - grace_period
 
     switch (type){
         case WORK_REQUEST:
