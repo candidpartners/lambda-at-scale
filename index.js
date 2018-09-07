@@ -344,6 +344,7 @@ async function on_metrics(metrics, fxn_name, run_id){
 async function setVisibilityTimeout(message, time){
     return sqs.changeMessageVisibility({ QueueUrl : INPUT_URL, ReceiptHandle: message.ReceiptHandle, VisibilityTimeout: time })
         .promise()
+        .then(() => console.log(`Message ${message.ReceiptHandle} timeout set to ${time}`))
         .catch(err => annoying("Failed to reset the visibility: " + err))
 }
 
@@ -364,7 +365,7 @@ async function handle_message(fxn_name, run_id, worker_id, end_time) {
     invocations++
 
     for(const message of messages){
-        let metrics = []
+        const metrics = [create_metric('messages_attempted', 1)]
 
         // if we aren't done by panic_time then we need to push the message back
         const panic_time = end_time - new Date().getTime()
@@ -372,11 +373,17 @@ async function handle_message(fxn_name, run_id, worker_id, end_time) {
         // with high concurrency, S3 gets mad causing timeouts, this handles that for us by pushing the message back on the queue
         const timer = setTimeout(() => setVisibilityTimeout(message, 0), panic_time)
         try {
-            metrics = await handle_path(message.Body)
+            const message_metrics = await handle_path(message.Body)
+            metrics.push(create_metric("metrics_handled", 1))
+            metrics.concat(message_metrics)
             clearTimeout(timer)
         } catch (error) {
+            metrics.push(create_metric("messages_error", 1))
             annoying("Failed to handle path: " + error)
-            await setVisibilityTimeout(message, 0)
+            await Promise.all([
+                setVisibilityTimeout(message, 0),
+                on_metrics(metrics, fxn_name, run_id)
+            ])
             break // don't delete, punt immediately
         }
         await sqs.deleteMessage({ QueueUrl : INPUT_URL, ReceiptHandle: message.ReceiptHandle }).promise()
