@@ -141,12 +141,17 @@ async function await_queue(target){
     return true
 }
 
-function warm_target(launch_count){
+async function warm_target(launch_count){
+    const depth = await get_queue_size()
     const remaining = Math.max(0, MAX_WORKERS - launch_count)
     const initial = process.env.INITIAL_COUNT || 3000
     const step = process.env.INCREMENT_STEP || 500
     const limit = 0 === launch_count ? initial : step
-    return Math.min(limit, remaining)
+    const full_limit = Math.min(limit, remaining)
+
+    // if our queue is empty then we don't want spin any more up,
+    // or if we have half the increment step in the queue, don't spin up the full step
+    return Math.min(full_limit, depth)
 }
 
 async function driver(fxn_name, memorySize, run_id, launch_count) {
@@ -160,7 +165,7 @@ async function driver(fxn_name, memorySize, run_id, launch_count) {
         await await_queue(lines.length)
     }
 
-    const target = warm_target(launch_count)
+    const target = await warm_target(launch_count)
 
     console.log(`Launching ${target} workers`)
     const workers = []
