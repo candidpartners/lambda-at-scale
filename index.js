@@ -114,18 +114,23 @@ async function populate_queue(){
 	return lines
 }
 
+async function get_queue_size(){
+	const attr_params = {
+		QueueUrl: INPUT_URL,
+		AttributeNames: [ 'ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible' ]
+	}
+
+	const results = await sqs.getQueueAttributes(attr_params).promise()
+			.catch(err => fatal("Unable to determine queue depth: " + err))
+    return results.Attributes.ApproximateNumberOfMessages + results.Attributes.ApproximateNumberOfMessagesNotVisible
+}
+
 async function await_queue(target){
 	// the promises have all run, now we need to make sure SQS shows all of them
 	// or our lambdas may start and immediately be done
-	const attr_params = {
-		QueueUrl: INPUT_URL,
-		AttributeNames: [ 'ApproximateNumberOfMessages' ]
-	}
 
 	while (true){
-		const results = await sqs.getQueueAttributes(attr_params).promise()
-			.catch(err => fatal("Unable to determine queue depth: " + err))
-		const ready = results.Attributes.ApproximateNumberOfMessages
+		const ready = await get_queue_size()
 		if (ready >= target){ // NB: type coercion here
 			console.log("Queue reports " + ready + " messages available")
 			break
