@@ -50,7 +50,7 @@ function annoying(err) {
 
 function fatal(err) {
     console.log("FATAL: " + err)
-    process.exit(1)
+    process.exit(0)
 }
 
 async function get_object(bucket, key) {
@@ -96,19 +96,25 @@ async function populate_queue(){
     const lines = input.slice(0, max).filter(data => 0 !== data.length) // limit for now
 
     console.log(`Populating with ${lines.length} archive entries`)
-    const enqueues = lines.map(line => {
-        return sqs.sendMessage({
-            MessageBody: line,
-            QueueUrl : INPUT_URL
-        }).promise()
-        .catch(err => fatal("Unable to fully populate queue: " + err))
-    })
 
+    const enqueuers = []
+    let count = 0
+    for (let index = 0; index < lines.length; index = index + 10) {
+        let counter = 0
+        const entries = lines.slice(index, index + 10).map(line => {
+            return {
+                MessageBody: line,
+                Id: `${counter++}` // There has to be a better way to do this
+            }
+        })
 
-    // make sure we have our queue populated before we spin off
-    // workers or we may race
-    await Promise.all(enqueues)
-        .catch(err => fatal("Unable to enqueue all messages: " + err))
+        const message = { Entries: entries, QueueUrl: INPUT_URL }
+        count += entries.length
+        enqueuers.push(sqs.sendMessageBatch(message).promise())
+    }
+
+    await Promise.all(enqueuers)
+        .catch(err => fatal("Something bad happened while enqueueing: " + err))
 
     // return what we did so we can wait for it
     return lines
@@ -122,7 +128,7 @@ async function get_queue_size(){
 
     const results = await sqs.getQueueAttributes(attr_params).promise()
             .catch(err => fatal("Unable to determine queue depth: " + err))
-    return results.Attributes.ApproximateNumberOfMessages + results.Attributes.ApproximateNumberOfMessagesNotVisible
+    return parseInt(results.Attributes.ApproximateNumberOfMessages) + parseInt(results.Attributes.ApproximateNumberOfMessagesNotVisible)
 }
 
 async function await_queue(target){
