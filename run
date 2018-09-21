@@ -1,0 +1,53 @@
+#!/bin/bash
+
+set -eu
+
+STACK=out/stack.json
+
+if [ -z "$1" ]
+then
+	echo "Need a stack name"
+	exit 1
+fi
+
+mkdir -p out
+aws cloudformation describe-stacks --stack-name $1 > $STACK
+
+# there has to be a better way
+FXN_ARN=`cat $STACK | jq '.[]' | jq '.[0] | .Outputs[] | select(.OutputKey=="Worker") | .OutputValue ' | tr -d '"'`
+CRAWL_QUEUE=`cat $STACK | jq '.[]' | jq '.[0] | .Outputs[] | select(.OutputKey=="CrawlQueue") | .OutputValue ' | tr -d '"'`
+METRIC_QUEUE=`cat $STACK | jq '.[]' | jq '.[0] | .Outputs[] | select(.OutputKey=="MetricQueue") | .OutputValue ' | tr -d '"'`
+
+export SIZE=1024
+export MAX_WORKERS=1
+export INITIAL_COUNT=1
+export MAX_CHUNKS=1
+export INCREMENT_STEP=0
+export AWS_PROFILE=caws
+export FXN_NAME=`echo $FXN_ARN | cut -d: -f7`
+#export METRIC_URL=https://sqs.us-east-1.amazonaws.com/$AWS_ACN/common-crawl-MetricQueue-165SY2SAJFR62
+#export INPUT_URL=https://sqs.us-east-1.amazonaws.com/$AWS_ACN/common-crawl-CrawlQueue-14Q1JH68DV6EM
+export METRIC_URL=https://sqs.us-east-1.amazonaws.com/$AWS_ACN/$METRIC_QUEUE
+export INPUT_URL=https://sqs.us-east-1.amazonaws.com/$AWS_ACN/$CRAWL_QUEUE
+export REGEX_HIT_URL=https://sqs.us-east-1.amazonaws.com/$AWS_ACN/dedup-queue
+export SINGLE_BUNDLE=crawl-data/CC-MAIN-2018-17/segments/1524125944742.25/warc/CC-MAIN-20180420213743-20180420233743-00299.warc.gz
+export CRAWL_INDEX_BUCKET=commoncrawl
+export CRAWL_INDEX_KEY=crawl-data/CC-MAIN-2018-17/warc.paths.gz
+export RUN_ID=$(date +%s)
+
+exit 0
+
+aws --profile $AWS_PROFILE sqs purge-queue --queue-url $METRIC_URL || true
+aws --profile $AWS_PROFILE sqs purge-queue --queue-url $INPUT_URL || true
+aws --profile $AWS_PROFILE lambda update-function-configuration --function-name $FXN_NAME --memory-size $SIZE --environment "Variables={RUN_ID=$RUN_ID,METRIC_URL=$METRIC_URL,QUEUE_URL=$INPUT_URL,CRAWL_INDEX_BUCKET=$CRAWL_INDEX_BUCKET,CRAWL_INDEX_KEY=$CRAWL_INDEX_KEY,MAX_CHUNKS=$MAX_CHUNKS,MAX_WORKERS=$MAX_WORKERS,SHUFFLE=t,SINGLE_BUNDLE=$SINGLE_BUNDLE,INITIAL_COUNT=$INITIAL_COUNT,INCREMENT_STEP=$INCREMENT_STEP,REGEX_HIT_URL=$REGEX_HIT_URL}"
+
+aws --profile $AWS_PROFILE lambda invoke --function-name $FXN_NAME --invocation-type Event out/test.`date +%s` --payload '{ "type" : "start" }'
+
+echo $RUN_ID | tee -a run.ids
+if [ -e dashboard ]; then
+	bash ./dashboard $RUN_ID 1024
+fi
+
+if [ -e lines ]; then
+	bash ./lines $RUN_ID 1024
+fi
