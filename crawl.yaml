@@ -86,3 +86,11 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       VisibilityTimeout: 300
+
+Outputs:
+  Worker:
+    Value: !GetAtt Worker.Arn
+  MetricQueue:
+    Value: !GetAtt MetricQueue.QueueName
+  CrawlQueue:
+    Value: !GetAtt CrawlQueue.QueueName
