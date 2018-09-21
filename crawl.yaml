@@ -23,6 +23,27 @@ Parameters:
     Default: '(\([0-9]{3}\) |[0-9]{3}-)[0-9]{3}-[0-9]{4}'
 
 Resources:
+  Drainer:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.metric_handler
+      Runtime: nodejs8.10
+      MemorySize: 128
+      Timeout: 5
+      Policies:
+        - SQSPollerPolicy:
+             QueueName:
+                Fn::GetAtt: [ "MetricQueue", "QueueName" ]
+        - CloudWatchPutMetricPolicy: {}
+
+  DrainerTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      Enabled: true
+      EventSourceArn: !GetAtt MetricQueue.Arn
+      FunctionName: !GetAtt Drainer.Arn
+
   Worker:
     Type: AWS::Serverless::Function
     Properties:

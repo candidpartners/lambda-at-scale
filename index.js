@@ -225,9 +225,7 @@ function on_regex(data0){
 
     const body = {
         MessageBody: data,
-        QueueUrl : process.env.REGEX_HIT_URL,
-        MessageDeduplicationId: data,
-        MessageGroupId: 'group-id' // TODO: we don't actually care about fifo-ing, but is required for the dedup
+        QueueUrl : process.env.REGEX_HIT_URL
     }
 
     sqs.sendMessage(body, (err, result) => {
@@ -302,7 +300,7 @@ async function handle_stream(stream){
         const extractedStream = extractorStream
             .on('error', err => fatal("Extracted stream error " + err))
             .on('data', () => count++)
-            .on('data', on_regex)
+//            .on('data', on_regex)
             .on('end', () => {
                 console.log("Streaming complete")
                 resolve("complete")
