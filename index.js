@@ -215,6 +215,28 @@ async function driver(fxn_name, memorySize, run_id, launch_count) {
     return run_lambda(fxn_name, START_REQUEST, run_id, 0, current_count)
 }
 
+function on_regex(data0){
+    if (!process.env.REGEX_HIT_URL){
+        return
+    }
+
+    // we allow XXX ABC-DEFG... the space isn't legal, so normalize
+    const data = data0.toString().trim().replace(' ', '-')
+
+    const body = {
+        MessageBody: data,
+        QueueUrl : process.env.REGEX_HIT_URL,
+        MessageDeduplicationId: data,
+        MessageGroupId: 'group-id' // TODO: we don't actually care about fifo-ing, but is required for the dedup
+    }
+
+    sqs.sendMessage(body, (err, result) => {
+        if (err) {
+            console.log(`${err}: ${JSON.stringify(result)} -- ${data}`)
+        }
+    })
+}
+
 async function handle_stream(stream){
     let uncompressed_bytes = 0
     let compressed_bytes = 0
@@ -280,6 +302,7 @@ async function handle_stream(stream){
         const extractedStream = extractorStream
             .on('error', err => fatal("Extracted stream error " + err))
             .on('data', () => count++)
+            .on('data', on_regex)
             .on('end', () => {
                 console.log("Streaming complete")
                 resolve("complete")
