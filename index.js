@@ -299,7 +299,7 @@ async function handle_stream(stream){
         const extractedStream = extractorStream
             .on('error', err => fatal("Extracted stream error " + err))
             .on('data', () => count++)
-//            .on('data', on_regex)
+            .on('data', on_regex)
             .on('end', () => {
                 console.log("Streaming complete")
                 resolve("complete")

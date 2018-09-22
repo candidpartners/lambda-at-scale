@@ -17,6 +17,7 @@ aws cloudformation describe-stacks --stack-name $1 > $STACK
 FXN_ARN=`cat $STACK | jq '.[]' | jq '.[0] | .Outputs[] | select(.OutputKey=="Worker") | .OutputValue ' | tr -d '"'`
 CRAWL_QUEUE=`cat $STACK | jq '.[]' | jq '.[0] | .Outputs[] | select(.OutputKey=="CrawlQueue") | .OutputValue ' | tr -d '"'`
 METRIC_QUEUE=`cat $STACK | jq '.[]' | jq '.[0] | .Outputs[] | select(.OutputKey=="MetricQueue") | .OutputValue ' | tr -d '"'`
+HIT_QUEUE=`cat $STACK | jq '.[]' | jq '.[0] | .Outputs[] | select(.OutputKey=="HitQueue") | .OutputValue ' | tr -d '"'`
 
 export SIZE=1024
 export MAX_WORKERS=1
@@ -29,7 +30,7 @@ export FXN_NAME=`echo $FXN_ARN | cut -d: -f7`
 #export INPUT_URL=https://sqs.us-east-1.amazonaws.com/$AWS_ACN/common-crawl-CrawlQueue-14Q1JH68DV6EM
 export METRIC_URL=https://sqs.us-east-1.amazonaws.com/$AWS_ACN/$METRIC_QUEUE
 export INPUT_URL=https://sqs.us-east-1.amazonaws.com/$AWS_ACN/$CRAWL_QUEUE
-export REGEX_HIT_URL=https://sqs.us-east-1.amazonaws.com/$AWS_ACN/dedup-queue
+export REGEX_HIT_URL=https://sqs.us-east-1.amazonaws.com/$AWS_ACN/$HIT_QUEUE
 export SINGLE_BUNDLE=crawl-data/CC-MAIN-2018-17/segments/1524125944742.25/warc/CC-MAIN-20180420213743-20180420233743-00299.warc.gz
 export CRAWL_INDEX_BUCKET=commoncrawl
 export CRAWL_INDEX_KEY=crawl-data/CC-MAIN-2018-17/warc.paths.gz
