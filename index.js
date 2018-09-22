@@ -11,7 +11,7 @@ const cloudWatch = new AWS.CloudWatch()
 const s3 = new AWS.S3()
 const sqs = new AWS.SQS()
 const lambda = new AWS.Lambda()
-const dynamo = new AWS.DynamoDB.DocumentClient();
+const dynamo = new AWS.DynamoDB();
 
 const BUCKET = process.env.CRAWL_INDEX_BUCKET || 'commoncrawl'
 const KEY = process.env.CRAWL_INDEX_KEY || 'crawl-data/CC-MAIN-2018-17/warc.paths.gz'
@@ -444,22 +444,41 @@ exports.metric_handler = async (event) => {
 }
 
 exports.dedup_handler = async (event) => {
-    if (!process.env.HIT_TABLE){
+    if (!process.env.HIT_TABLE || 0 === event.Records.length) {
         return
     }
 
-    const records = event.Records || []
+    const records = event.Records.map(record => JSON.parse(record.body))
+    const run_id = records[0].run_id
+    const hits = [...new Set(records.map(record => record.data))] // get unique hits
 
-    for (let record of records){
-        const item = JSON.parse(record.body)
+    const data = hits.map(data => {
+        return {run_id, data}
+    })
 
-        const params = {
-            TableName: process.env.HIT_TABLE,
-            Item: item
+
+    const entries = []
+    for (const datum of data) {
+        const entry = {
+            PutRequest: {
+                Item: {
+                    "run_id": {"S": datum.run_id},
+                    "data": {"S": datum.data}
+                }
+            }
         }
-
-        await dynamo.put(params).promise()
+        entries.push(entry)
     }
+
+    const RequestItems = {
+        [process.env.HIT_TABLE]: entries
+    }
+
+    const params = {
+        RequestItems
+    }
+
+    await dynamo.batchWriteItem(params).promise()
 }
 
 async function persist_metric_batch(messages){

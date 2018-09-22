@@ -30,6 +30,7 @@ Resources:
       Runtime: nodejs8.10
       MemorySize: 128
       Timeout: 5
+      ReservedConcurrentExecutions: 1
       Policies:
         - SQSPollerPolicy:
              QueueName:
