@@ -440,6 +440,13 @@ exports.metric_handler = async (event) => {
     console.log(`Inserted ${metrics.length} metrics`)
 }
 
+exports.dedup_handler = async (event) => {
+    if (!process.env.DEDUP_TABLE){
+        return
+    }
+
+    console.log(`Dedup: ${event}`)
+}
 
 async function persist_metric_batch(messages){
     for (const message of messages){

@@ -1,6 +1,6 @@
 OUT=out
 
-FXN_NAME=cc
+FXN_NAME?=cc
 S3_BUCKET?=candid-serverlessrepo
 OUTPUT_CF=$(OUT)/serverless.yaml
 REGION?=us-east-1
