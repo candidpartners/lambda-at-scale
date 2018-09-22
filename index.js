@@ -441,7 +441,7 @@ exports.metric_handler = async (event) => {
 }
 
 exports.dedup_handler = async (event) => {
-    if (!process.env.DEDUP_TABLE){
+    if (!process.env.HIT_TABLE){
         return
     }
 
