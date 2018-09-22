@@ -34,6 +34,9 @@ Resources:
         - SQSPollerPolicy:
              QueueName:
                 Fn::GetAtt: [ "HitQueue", "QueueName" ]
+      Environment:
+        Variables:
+          HIT_TABLE: !Ref DeDuper
 
   DedupTrigger:
     Type: AWS::Lambda::EventSourceMapping
