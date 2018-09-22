@@ -34,6 +34,8 @@ Resources:
         - SQSPollerPolicy:
              QueueName:
                 Fn::GetAtt: [ "HitQueue", "QueueName" ]
+        - DynamoDBCrudPolicy:
+             TableName: !Ref DeDuper
       Environment:
         Variables:
           HIT_TABLE: !Ref DeDuper
@@ -70,15 +72,21 @@ Resources:
   DeDuper:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: "DeDuper"
+      TableName: !Sub "DeDuper-${AWS::StackName}"
       AttributeDefinitions:
         -
-          AttributeName: "id"
+          AttributeName: "run_id"
+          AttributeType: "S"
+        -
+          AttributeName: "data"
           AttributeType: "S"
       KeySchema:
         -
-          AttributeName: "id"
+          AttributeName: "run_id"
           KeyType: "HASH"
+        -
+          AttributeName: "data"
+          KeyType: "RANGE"
       ProvisionedThroughput:
         ReadCapacityUnits: "1"
         WriteCapacityUnits: "3"
@@ -133,7 +141,7 @@ Resources:
   HitQueue:
     Type: AWS::SQS::Queue
     Properties:
-      VisibilityTimeout: 30
+      VisibilityTimeout: 5
 
 Outputs:
   Worker:

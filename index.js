@@ -11,6 +11,7 @@ const cloudWatch = new AWS.CloudWatch()
 const s3 = new AWS.S3()
 const sqs = new AWS.SQS()
 const lambda = new AWS.Lambda()
+const dynamo = new AWS.DynamoDB.DocumentClient();
 
 const BUCKET = process.env.CRAWL_INDEX_BUCKET || 'commoncrawl'
 const KEY = process.env.CRAWL_INDEX_KEY || 'crawl-data/CC-MAIN-2018-17/warc.paths.gz'
@@ -215,15 +216,17 @@ async function driver(fxn_name, memorySize, run_id, launch_count) {
     return run_lambda(fxn_name, START_REQUEST, run_id, 0, current_count)
 }
 
-function on_regex(data0){
+function on_regex(data0, run_id){
     if (!process.env.REGEX_HIT_URL){
         return
     }
 
     const data = data0.toString().trim().replace(' ', '-')
 
+    const payload = JSON.stringify({ run_id: `${run_id}`, data }) // force to string
+
     const body = {
-        MessageBody: data,
+        MessageBody: payload,
         QueueUrl : process.env.REGEX_HIT_URL
     }
 
@@ -234,7 +237,7 @@ function on_regex(data0){
     })
 }
 
-async function handle_stream(stream){
+async function handle_stream(stream, run_id){
     let uncompressed_bytes = 0
     let compressed_bytes = 0
     let total_requests = 0
@@ -299,7 +302,7 @@ async function handle_stream(stream){
         const extractedStream = extractorStream
             .on('error', err => fatal("Extracted stream error " + err))
             .on('data', () => count++)
-            .on('data', on_regex)
+            .on('data', data => on_regex(data, run_id))
             .on('end', () => {
                 console.log("Streaming complete")
                 resolve("complete")
@@ -321,7 +324,7 @@ async function handle_stream(stream){
     ]
 }
 
-async function handle_path(path) {
+async function handle_path(path, run_id) {
     const params = {
         Bucket : BUCKET,
         Key : path
@@ -334,7 +337,7 @@ async function handle_path(path) {
             console.log("Streaming as x-amz-id-2=" + amzId + ", x-amz-request-id=" + requestId + "/" + JSON.stringify(params))
         }).createReadStream()
 
-    return handle_stream(stream)
+    return handle_stream(stream, run_id)
 }
 
 function create_metric(key, value, unit){
@@ -405,7 +408,7 @@ async function handle_message(fxn_name, run_id, worker_id, end_time) {
         // with high concurrency, S3 gets mad causing timeouts, this handles that for us by pushing the message back on the queue
         const timer = setTimeout(async () => await setVisibilityTimeout(message, 0), panic_time)
         try {
-            const message_metrics = await handle_path(message.Body)
+            const message_metrics = await handle_path(message.Body, run_id)
             metrics.push(create_metric("metrics_handled", 1))
             metrics = metrics.concat(message_metrics)
             clearTimeout(timer)
@@ -445,7 +448,18 @@ exports.dedup_handler = async (event) => {
         return
     }
 
-    console.log(`Dedup: ${event}`)
+    const records = event.Records || []
+
+    for (let record of records){
+        const item = JSON.parse(record.body)
+
+        const params = {
+            TableName: process.env.HIT_TABLE,
+            Item: item
+        }
+
+        await dynamo.put(params).promise()
+    }
 }
 
 async function persist_metric_batch(messages){
