@@ -35,8 +35,6 @@ export CRAWL_INDEX_BUCKET=commoncrawl
 export CRAWL_INDEX_KEY=crawl-data/CC-MAIN-2018-17/warc.paths.gz
 export RUN_ID=$(date +%s)
 
-exit 0
-
 aws --profile $AWS_PROFILE sqs purge-queue --queue-url $METRIC_URL || true
 aws --profile $AWS_PROFILE sqs purge-queue --queue-url $INPUT_URL || true
 aws --profile $AWS_PROFILE lambda update-function-configuration --function-name $FXN_NAME --memory-size $SIZE --environment "Variables={RUN_ID=$RUN_ID,METRIC_URL=$METRIC_URL,QUEUE_URL=$INPUT_URL,CRAWL_INDEX_BUCKET=$CRAWL_INDEX_BUCKET,CRAWL_INDEX_KEY=$CRAWL_INDEX_KEY,MAX_CHUNKS=$MAX_CHUNKS,MAX_WORKERS=$MAX_WORKERS,SHUFFLE=t,SINGLE_BUNDLE=$SINGLE_BUNDLE,INITIAL_COUNT=$INITIAL_COUNT,INCREMENT_STEP=$INCREMENT_STEP,REGEX_HIT_URL=$REGEX_HIT_URL}"
@@ -44,10 +42,13 @@ aws --profile $AWS_PROFILE lambda update-function-configuration --function-name 
 aws --profile $AWS_PROFILE lambda invoke --function-name $FXN_NAME --invocation-type Event out/test.`date +%s` --payload '{ "type" : "start" }'
 
 echo $RUN_ID | tee -a run.ids
-if [ -e dashboard ]; then
-	bash ./dashboard $RUN_ID 1024
-fi
 
-if [ -e lines ]; then
-	bash ./lines $RUN_ID 1024
-fi
+echo "https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#metricsV2:graph=~(view~'singleValue~stacked~false~metrics~(~(~'NAME~'memory_size~'run_id~'RUN_ID~(id~'memory~stat~'Average~period~2592000~label~'Lambda*20Size))~(~(expression~'0.00001667*20*2a*20*28memory*20*2f*201024*29*20*2a*20compute_sec~label~'Cost~id~'e6))~(~(expression~'*28end*20-*20start*29*20*2f*201000~label~'Wall*20Secs~id~'wall_sec~yAxis~'left))~(~(expression~'elapsed_sum*20*2f*201000~label~'Compute*20Secs~id~'compute_sec))~(~'NAME~'total_workers~'run_id~'RUN_ID~(id~'workers~label~'Workers~period~2592000))~(~'.~'start_time~'.~'.~(visible~false~id~'start~period~2592000~stat~'Minimum))~(~'.~'total_chunks~'.~'.~(id~'archives~label~'Archives~period~2592000))~(~'.~'regex_hits~'.~'.~(id~'regex_hits~period~2592000~stat~'Sum~label~'Numbers*20Found))~(~(expression~'regex_hits*20*2f*20wall_sec~label~'Numbers*20Found*20*2f*20Sec~id~'e5))~(~'NAME~'end_time~'run_id~'RUN_ID~(visible~false~id~'end~stat~'Maximum~period~2592000))~(~'.~'compressed_bytes~'.~'.~(id~'cbytes~stat~'Sum~period~2592000~label~'Compressed*20Bytes*20Scanned))~(~'.~'uncompressed_bytes~'.~'.~(id~'ucbytes~stat~'Sum~period~2592000~label~'Uncompressed*20Bytes*20Scanned))~(~(expression~'cbytes*20*2f*20wall_sec~label~'Compressed*20Bytes*20*2f*20Sec~id~'e3))~(~(expression~'ucbytes*20*2f*20wall_sec~label~'Uncompressed*20Bytes*20*2f*20Sec~id~'e4))~(~(expression~'cbytes*20*2f*20workers~label~'Compressed*20Bytes*20*2f*20Worker~id~'e1))~(~(expression~'ucbytes*20*2f*20workers~label~'Uncompressed*20Bytes*20*2f*20Worker~id~'e8))~(~'NAME~'elapsed_ms~'run_id~'RUN_ID~(id~'elapsed_sum~stat~'Sum~visible~false~period~2592000))~(~'.~'total_requests~'.~'.~(id~'requests~period~2592000~label~'HTTP*20Requests*20Scanned~stat~'Sum))~(~(expression~'requests*20*2f*20workers~label~'HTTP*20Requests*20*2f*20Worker~id~'e2))~(~(expression~'requests*20*2f*20wall_sec~label~'HTTP*20Requests*20*2f*20Sec~id~'e7)))~region~'us-east-1~start~'-P7D~end~'P0D~title~'SIZEmb*20Run);namespace=NAME;dimensions=run_id" | \
+	sed "s/NAME/${SIZE}mb/g" | \
+	sed "s/RUN_ID/$RUN_ID/g" | \
+	sed "s/SIZE/$SIZE/g"
+
+echo "https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#metricsV2:graph=~(metrics~(~(~'NAME~'full_start_time~'run_id~'RUN_ID~(period~1~visible~false))~(~'.~'memory_size~'.~'.~(period~1~visible~false))~(~'.~'launch_start_time~'.~'.~(period~1~visible~false))~(~'.~'total_workers~'.~'.~(period~1~visible~false))~(~'.~'total_chunks~'.~'.~(period~1~visible~false))~(~'.~'regex_hits~'.~'.~(period~1~stat~'Sum))~(~'.~'elapsed_ms~'.~'.~(period~1~visible~false))~(~'.~'total_requests~'.~'.~(period~1~stat~'Sum))~(~'.~'uncompressed_bytes~'.~'.~(period~1~stat~'Sum))~(~'.~'start_time~'.~'.~(period~1~visible~false))~(~'.~'compressed_bytes~'.~'.~(period~1~stat~'Sum))~(~'.~'end_time~'.~'.~(period~1~visible~false)))~view~'timeSeries~stacked~false~region~'us-east-1);namespace=NAME;dimensions=run_id" | \
+	sed "s/NAME/${SIZE}mb/g" | \
+	sed "s/RUN_ID/$RUN_ID/g"
+

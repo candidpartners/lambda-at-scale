@@ -1,6 +1,6 @@
 OUT=out
 
-FXN_NAME?=crawl-driver
+FXN_NAME=cc
 S3_BUCKET?=candid-serverlessrepo
 OUTPUT_CF=$(OUT)/serverless.yaml
 REGION?=us-east-1
@@ -30,13 +30,16 @@ upgrade: $(INDEX_ZIP) $(STAMP_SETUP)
 clean:
 	rm -rf $(OUT)
 
-$(OUTPUT_CF): crawl.yaml index.js Makefile | $(OUT)
+$(OUTPUT_CF): crawl.yaml index.js | $(OUT)
 	sam package \
 		--template-file $< \
 		--output-template-file $(OUTPUT_CF) \
 		--s3-bucket $(S3_BUCKET)
 
 package: $(OUTPUT_CF)
+
+deploy-cf: $(OUTPUT_CF)
+	aws cloudformation deploy --template-file $< --stack-name $(FXN_NAME) --capabilities CAPABILITY_IAM
 
 deploy: CONF_YAML=$(APPLICATION_NAME)-$(VERSION).yaml
 deploy: $(OUTPUT_CF)
@@ -60,4 +63,4 @@ tags: index.js
 $(OUT):
 	mkdir -p $@
 
-.PHONY: setup push clean package deploy test
+.PHONY: setup push clean package deploy test deploy-cf

@@ -220,7 +220,6 @@ function on_regex(data0){
         return
     }
 
-    // we allow XXX ABC-DEFG... the space isn't legal, so normalize
     const data = data0.toString().trim().replace(' ', '-')
 
     const body = {
