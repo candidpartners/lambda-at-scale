@@ -224,16 +224,19 @@ function flush_regex_queue(run_id){
         return
     }
 
-    const records = [...REGEX_HIT_SET].map(data => { Data: new Buffer(JSON.stringify({ run_id, data })) })
+    const records = [...REGEX_HIT_SET].map(data => {
+        return { Data: new Buffer(JSON.stringify({ run_id, data })) }
+    })
+
 
     const params = {
         DeliveryStreamName: process.env.HIT_STREAM,
         Records: records
     }
 
-    console.log(`Flushing ${records.length} messages...`)
-    firehose.putRecordBatch(params)
-    console.log("...done")
+    firehose.putRecordBatch(params, (err, result) => {
+        console.log(`${err}: ${result}`)
+    })
     REGEX_HIT_SET.clear()
 }
 
