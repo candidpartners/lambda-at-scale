@@ -11,6 +11,7 @@ const cloudWatch = new AWS.CloudWatch()
 const s3 = new AWS.S3()
 const sqs = new AWS.SQS()
 const lambda = new AWS.Lambda()
+const firehose = new AWS.Firehose()
 
 const BUCKET = process.env.CRAWL_INDEX_BUCKET || 'commoncrawl'
 const KEY = process.env.CRAWL_INDEX_KEY || 'crawl-data/CC-MAIN-2018-17/warc.paths.gz'
@@ -28,6 +29,9 @@ const WORK_REQUEST = 'work'
 const START_REQUEST = 'start'
 
 const ONE_MINUTE_MILLIS = 60 * 1000
+
+const REGEX_HIT_QUEUE = []
+const REGEX_FLUSH_SIZE = 500
 
 let invocations = 0
 
@@ -215,7 +219,34 @@ async function driver(fxn_name, memorySize, run_id, launch_count) {
     return run_lambda(fxn_name, START_REQUEST, run_id, 0, current_count)
 }
 
-function on_regex(data0, run_id){
+function flush_regex_queue(run_id){
+    if (!process.env.HIT_STREAM || 0 === REGEX_HIT_QUEUE.length){
+        return
+    }
+
+    const records = REGEX_HIT_QUEUE.map(buf => { Data: buf })
+
+    const params = {
+        DeliveryStreamName: process.env.HIT_STREAM,
+        Records: records
+    }
+
+    firehose.putRecordBatch(params)
+    REGEX_HIT_QUEUE.length = 0
+}
+
+function on_regex(data, run_id){
+    if (!process.env.HIT_STREAM){
+        return
+    }
+
+    if (data && run_id){
+        REGEX_HIT_QUEUE.push(data)
+    }
+
+    if (REGEX_FLUSH_SIZE <= REGEX_HIT_QUEUE.length){
+        flush_regex_queue(run_id)
+    }
 }
 
 async function handle_stream(stream, run_id){
@@ -286,6 +317,7 @@ async function handle_stream(stream, run_id){
             .on('data', data => on_regex(data, run_id))
             .on('end', () => {
                 console.log("Streaming complete")
+                flush_regex_queue()
                 resolve("complete")
             })
     })
