@@ -30,7 +30,7 @@ const START_REQUEST = 'start'
 
 const ONE_MINUTE_MILLIS = 60 * 1000
 
-const REGEX_HIT_QUEUE = []
+const REGEX_HIT_SET = new Set()
 const REGEX_FLUSH_SIZE = 500
 
 let invocations = 0
@@ -220,19 +220,21 @@ async function driver(fxn_name, memorySize, run_id, launch_count) {
 }
 
 function flush_regex_queue(run_id){
-    if (!process.env.HIT_STREAM || 0 === REGEX_HIT_QUEUE.length){
+    if (!process.env.HIT_STREAM || 0 === REGEX_HIT_SET.size){
         return
     }
 
-    const records = REGEX_HIT_QUEUE.map(buf => { Data: buf })
+    const records = [...REGEX_HIT_SET].map(data => { Data: new Buffer(JSON.stringify(run_id, data)) })
 
     const params = {
         DeliveryStreamName: process.env.HIT_STREAM,
         Records: records
     }
 
+    console.log(`Flushing ${records.length} messages...`)
     firehose.putRecordBatch(params)
-    REGEX_HIT_QUEUE.length = 0
+    console.log("...done")
+    REGEX_HIT_SET.clear()
 }
 
 function on_regex(data, run_id){
@@ -241,10 +243,10 @@ function on_regex(data, run_id){
     }
 
     if (data && run_id){
-        REGEX_HIT_QUEUE.push(data)
+        REGEX_HIT_SET.add(data)
     }
 
-    if (REGEX_FLUSH_SIZE <= REGEX_HIT_QUEUE.length){
+    if (REGEX_FLUSH_SIZE <= REGEX_HIT_SET.size){
         flush_regex_queue(run_id)
     }
 }
