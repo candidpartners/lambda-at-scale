@@ -11,7 +11,6 @@ const cloudWatch = new AWS.CloudWatch()
 const s3 = new AWS.S3()
 const sqs = new AWS.SQS()
 const lambda = new AWS.Lambda()
-const dynamo = new AWS.DynamoDB();
 
 const BUCKET = process.env.CRAWL_INDEX_BUCKET || 'commoncrawl'
 const KEY = process.env.CRAWL_INDEX_KEY || 'crawl-data/CC-MAIN-2018-17/warc.paths.gz'
@@ -217,24 +216,6 @@ async function driver(fxn_name, memorySize, run_id, launch_count) {
 }
 
 function on_regex(data0, run_id){
-    if (!process.env.REGEX_HIT_URL){
-        return
-    }
-
-    const data = data0.toString().trim().replace(' ', '-')
-
-    const payload = JSON.stringify({ run_id: `${run_id}`, data }) // force to string
-
-    const body = {
-        MessageBody: payload,
-        QueueUrl : process.env.REGEX_HIT_URL
-    }
-
-    sqs.sendMessage(body, (err, result) => {
-        if (err) {
-            console.log(`${err}: ${JSON.stringify(result)} -- ${data}`)
-        }
-    })
 }
 
 async function handle_stream(stream, run_id){
@@ -441,44 +422,6 @@ exports.metric_handler = async (event) => {
 
     await persist_metric_batch(metrics)
     console.log(`Inserted ${metrics.length} metrics`)
-}
-
-exports.dedup_handler = async (event) => {
-    if (!process.env.HIT_TABLE || 0 === event.Records.length) {
-        return
-    }
-
-    const records = event.Records.map(record => JSON.parse(record.body))
-    const run_id = records[0].run_id
-    const hits = [...new Set(records.map(record => record.data))] // get unique hits
-
-    const data = hits.map(data => {
-        return {run_id, data}
-    })
-
-
-    const entries = []
-    for (const datum of data) {
-        const entry = {
-            PutRequest: {
-                Item: {
-                    "run_id": {"S": datum.run_id},
-                    "data": {"S": datum.data}
-                }
-            }
-        }
-        entries.push(entry)
-    }
-
-    const RequestItems = {
-        [process.env.HIT_TABLE]: entries
-    }
-
-    const params = {
-        RequestItems
-    }
-
-    await dynamo.batchWriteItem(params).promise()
 }
 
 async function persist_metric_batch(messages){

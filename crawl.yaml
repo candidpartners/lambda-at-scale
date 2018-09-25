@@ -23,32 +23,6 @@ Parameters:
     Default: '(\([0-9]{3}\) |[0-9]{3}-)[0-9]{3}-[0-9]{4}'
 
 Resources:
-  Deduper:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: index.dedup_handler
-      Runtime: nodejs8.10
-      MemorySize: 128
-      Timeout: 5
-      ReservedConcurrentExecutions: 1
-      Policies:
-        - SQSPollerPolicy:
-             QueueName:
-                Fn::GetAtt: [ "HitQueue", "QueueName" ]
-        - DynamoDBCrudPolicy:
-             TableName: !Ref DeDuper
-      Environment:
-        Variables:
-          HIT_TABLE: !Ref DeDuper
-
-  DedupTrigger:
-    Type: AWS::Lambda::EventSourceMapping
-    Properties:
-      BatchSize: 10
-      Enabled: true
-      EventSourceArn: !GetAtt HitQueue.Arn
-      FunctionName: !GetAtt Deduper.Arn
-
   Drainer:
     Type: AWS::Serverless::Function
     Properties:
@@ -112,9 +86,6 @@ Resources:
         - SQSSendMessagePolicy:
              QueueName:
                 Fn::GetAtt: [ "MetricQueue", "QueueName" ]
-        - SQSSendMessagePolicy:
-             QueueName:
-                Fn::GetAtt: [ "HitQueue", "QueueName" ]
         - S3ReadPolicy:
              BucketName: !Ref IndexBucket
         - CloudWatchPutMetricPolicy: {}
@@ -123,10 +94,8 @@ Resources:
              FunctionName: !Ref AWS::StackName
       Environment:
         Variables:
-          HIT_TABLE: !Ref DeDuper
           QUEUE_URL: !Ref CrawlQueue
           METRIC_URL: !Ref MetricQueue
-          REGEX_HIT_URL: !Ref HitQueue
           MAX_WORKERS: !Ref NumberOfWorkers
           MAX_CHUNKS: !Ref NumberOfChunks
           CRAWL_INDEX_BUCKET: !Ref IndexBucket
@@ -139,10 +108,6 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       VisibilityTimeout: 30
-  HitQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      VisibilityTimeout: 5
 
 Outputs:
   Worker:
@@ -151,7 +116,3 @@ Outputs:
     Value: !GetAtt MetricQueue.QueueName
   CrawlQueue:
     Value: !GetAtt CrawlQueue.QueueName
-  HitQueue:
-    Value: !GetAtt HitQueue.QueueName
-  HitTable:
-    Value: !Ref DeDuper
