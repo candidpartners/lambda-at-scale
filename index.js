@@ -235,7 +235,9 @@ function flush_regex_queue(run_id){
     }
 
     firehose.putRecordBatch(params, (err, result) => {
-        console.log(`${err}: ${result}`)
+        if (err) {
+            console.log(`${err}: ${result}`)
+        }
     })
     REGEX_HIT_SET.clear()
 }
