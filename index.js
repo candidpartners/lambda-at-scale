@@ -224,7 +224,7 @@ function flush_regex_queue(run_id){
         return
     }
 
-    const records = [...REGEX_HIT_SET].map(data => { Data: new Buffer(JSON.stringify(run_id, data)) })
+    const records = [...REGEX_HIT_SET].map(data => { Data: new Buffer(JSON.stringify({ run_id, data })) })
 
     const params = {
         DeliveryStreamName: process.env.HIT_STREAM,
@@ -319,7 +319,7 @@ async function handle_stream(stream, run_id){
             .on('data', data => on_regex(data, run_id))
             .on('end', () => {
                 console.log("Streaming complete")
-                flush_regex_queue()
+                flush_regex_queue(run_id)
                 resolve("complete")
             })
     })
