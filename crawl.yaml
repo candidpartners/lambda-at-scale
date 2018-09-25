@@ -23,6 +23,12 @@ Parameters:
     Default: '(\([0-9]{3}\) |[0-9]{3}-)[0-9]{3}-[0-9]{4}'
 
 Resources:
+    #  FireHose:
+    #    Type: AWS::KinesisFirehose::DeliveryStream
+    #    Properties:
+    #      DeliveryStreamName: HitStream
+    #      DeliveryStreamType: DirectPut
+
   Drainer:
     Type: AWS::Serverless::Function
     Properties:
@@ -43,28 +49,6 @@ Resources:
       Enabled: true
       EventSourceArn: !GetAtt MetricQueue.Arn
       FunctionName: !GetAtt Drainer.Arn
-
-  DeDuper:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub "DeDuper-${AWS::StackName}"
-      AttributeDefinitions:
-        -
-          AttributeName: "run_id"
-          AttributeType: "S"
-        -
-          AttributeName: "data"
-          AttributeType: "S"
-      KeySchema:
-        -
-          AttributeName: "run_id"
-          KeyType: "HASH"
-        -
-          AttributeName: "data"
-          KeyType: "RANGE"
-      ProvisionedThroughput:
-        ReadCapacityUnits: "1"
-        WriteCapacityUnits: "3"
 
   Worker:
     Type: AWS::Serverless::Function
