@@ -248,7 +248,7 @@ function on_regex(data, run_id){
     }
 
     if (data && run_id){
-        REGEX_HIT_SET.add(data)
+        REGEX_HIT_SET.add(data.toString().replace(" ", "-"))
     }
 
     if (REGEX_FLUSH_SIZE <= REGEX_HIT_SET.size){
