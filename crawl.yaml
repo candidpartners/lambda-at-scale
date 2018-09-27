@@ -23,11 +23,56 @@ Parameters:
     Default: '(\([0-9]{3}\) |[0-9]{3}-)[0-9]{3}-[0-9]{4}'
 
 Resources:
-    #  FireHose:
-    #    Type: AWS::KinesisFirehose::DeliveryStream
-    #    Properties:
-    #      DeliveryStreamName: HitStream
-    #      DeliveryStreamType: DirectPut
+
+  HitBucket:
+    Type: AWS::S3::Bucket
+
+  OmnipotentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+                - "firehose.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action: "*"
+                Resource: "*"
+
+  HitHose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: HitHose
+      DeliveryStreamType: KinesisStreamAsSource
+      S3DestinationConfiguration:
+        BucketARN: !GetAtt HitBucket.Arn
+        BufferingHints:
+          IntervalInSeconds: 300
+          SizeInMBs: 64
+        Prefix: /
+        CompressionFormat: UNCOMPRESSED
+        RoleARN: !GetAtt OmnipotentRole.Arn
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN:  !GetAtt HitStream.Arn
+        RoleARN: !GetAtt OmnipotentRole.Arn
+
+  HitStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      ShardCount: 1
 
   Drainer:
     Type: AWS::Serverless::Function
