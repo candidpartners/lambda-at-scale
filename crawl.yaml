@@ -62,7 +62,7 @@ Resources:
         BufferingHints:
           IntervalInSeconds: 300
           SizeInMBs: 64
-        Prefix: /
+        Prefix: "data/"
         CompressionFormat: UNCOMPRESSED
         RoleARN: !GetAtt OmnipotentRole.Arn
       KinesisStreamSourceConfiguration:
@@ -103,6 +103,8 @@ Resources:
       MemorySize: 1024
       Timeout: 300
       Policies:
+        - KinesisCrudPolicy:
+            StreamName: !Ref HitStream
         - SQSPollerPolicy:
              QueueName:
                 Fn::GetAtt: [ "CrawlQueue", "QueueName" ]
@@ -145,3 +147,5 @@ Outputs:
     Value: !GetAtt MetricQueue.QueueName
   CrawlQueue:
     Value: !GetAtt CrawlQueue.QueueName
+  HitStream:
+    Value: !Ref HitStream
