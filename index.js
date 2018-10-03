@@ -11,7 +11,7 @@ const cloudWatch = new AWS.CloudWatch()
 const s3 = new AWS.S3()
 const sqs = new AWS.SQS()
 const lambda = new AWS.Lambda()
-const firehose = new AWS.Firehose()
+const kinesis = new AWS.Kinesis()
 
 const BUCKET = process.env.CRAWL_INDEX_BUCKET || 'commoncrawl'
 const KEY = process.env.CRAWL_INDEX_KEY || 'crawl-data/CC-MAIN-2018-17/warc.paths.gz'
@@ -225,16 +225,20 @@ function flush_regex_queue(run_id){
     }
 
     const records = [...REGEX_HIT_SET].map(data => {
-        return { Data: new Buffer(JSON.stringify({ run_id, data })) }
+        const record = {
+            PartitionKey: data,
+            Data: new Buffer(JSON.stringify({ run_id, data }))
+        }
+        return record
     })
 
 
     const params = {
-        DeliveryStreamName: process.env.HIT_STREAM,
+        StreamName: process.env.HIT_STREAM,
         Records: records
     }
 
-    firehose.putRecordBatch(params, (err, result) => {
+    kinesis.putRecords(params, (err, result) => {
         if (err) {
             console.log(`${err}: ${result}`)
         }

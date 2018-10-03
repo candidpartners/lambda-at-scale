@@ -1,6 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Parameters:
+  KinesisShards:
+    Type: Number
+    Description: 'How many shards do you want for the result stream'
+    Default: 16
   NumberOfWorkers:
     Type: Number
     Description: 'How many concurrent workers do you want'
@@ -72,7 +76,7 @@ Resources:
   HitStream:
     Type: AWS::Kinesis::Stream
     Properties:
-      ShardCount: 1
+      ShardCount: !Ref KinesisShards
 
   Drainer:
     Type: AWS::Serverless::Function
