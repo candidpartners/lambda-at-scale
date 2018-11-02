@@ -287,7 +287,6 @@ async function handle_stream(stream, run_id){
             .on('data', data => on_regex(data, run_id))
             .on('end', () => {
                 console.log("Streaming complete")
-                flush_regex_queue(run_id)
                 resolve("complete")
             })
     })
