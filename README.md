@@ -10,5 +10,7 @@ The Makefile will create the serverless repo in your account.  By default it isn
 
 The 'make deploy' target will create a serverless repo for you that you can choose to make public.  Alternately, you can run 'make deploy-cf' and it will deploy via CloudFront.
 
+We used an Ubuntu 16.04-based Linux distribution for our development and testing.  It should be easily portable to similar environments.
+
 ## Running
 The 'run' script takes a single argument, the name of the stack from the deployment stage.  It isn't strictly necessary, but it ties together the cleaning out of various queues and outputs links for the dashboards.  It is also useful to override the number of chunks to process or impose a concurrency limit.
