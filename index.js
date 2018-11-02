@@ -11,7 +11,6 @@ const cloudWatch = new AWS.CloudWatch()
 const s3 = new AWS.S3()
 const sqs = new AWS.SQS()
 const lambda = new AWS.Lambda()
-const kinesis = new AWS.Kinesis()
 
 const BUCKET = process.env.CRAWL_INDEX_BUCKET || 'commoncrawl'
 const KEY = process.env.CRAWL_INDEX_KEY || 'crawl-data/CC-MAIN-2018-17/warc.paths.gz'
@@ -29,9 +28,6 @@ const WORK_REQUEST = 'work'
 const START_REQUEST = 'start'
 
 const ONE_MINUTE_MILLIS = 60 * 1000
-
-const REGEX_HIT_SET = new Set()
-const REGEX_FLUSH_SIZE = 500
 
 let invocations = 0
 
@@ -219,45 +215,8 @@ async function driver(fxn_name, memorySize, run_id, launch_count) {
     return run_lambda(fxn_name, START_REQUEST, run_id, 0, current_count)
 }
 
-function flush_regex_queue(run_id){
-    if (!process.env.HIT_STREAM || 0 === REGEX_HIT_SET.size){
-        return
-    }
-
-    const records = [...REGEX_HIT_SET].map(data => {
-        const record = {
-            PartitionKey: data,
-            Data: new Buffer(JSON.stringify({ run_id, data }))
-        }
-        return record
-    })
-
-
-    const params = {
-        StreamName: process.env.HIT_STREAM,
-        Records: records
-    }
-
-    kinesis.putRecords(params, (err, result) => {
-        if (err) {
-            console.log(`${err}: ${result}`)
-        }
-    })
-    REGEX_HIT_SET.clear()
-}
-
 function on_regex(data, run_id){
-    if (!process.env.HIT_STREAM){
-        return
-    }
-
-    if (data && run_id){
-        REGEX_HIT_SET.add(data.toString().replace(" ", "-"))
-    }
-
-    if (REGEX_FLUSH_SIZE <= REGEX_HIT_SET.size){
-        flush_regex_queue(run_id)
-    }
+	// if you want to do something on getting a hit, put it here
 }
 
 async function handle_stream(stream, run_id){
