@@ -16,7 +16,6 @@ aws cloudformation describe-stacks --stack-name $1 > $STACK
 FXN_NAME=`cat $STACK | jq '.[]' | jq '.[0] | .Outputs[] | select(.OutputKey=="Worker") | .OutputValue ' | tr -d '"'`
 CRAWL_QUEUE=`cat $STACK | jq '.[]' | jq '.[0] | .Outputs[] | select(.OutputKey=="CrawlQueue") | .OutputValue ' | tr -d '"'`
 METRIC_QUEUE=`cat $STACK | jq '.[]' | jq '.[0] | .Outputs[] | select(.OutputKey=="MetricQueue") | .OutputValue ' | tr -d '"'`
-HIT_STREAM=`cat $STACK | jq '.[]' | jq '.[0] | .Outputs[] | select(.OutputKey=="HitStream") | .OutputValue ' | tr -d '"'`
 
 export SIZE=1024
 export MAX_WORKERS=19900
@@ -34,7 +33,7 @@ export RUN_ID=$(date +%s)
 
 aws --profile $AWS_PROFILE sqs purge-queue --queue-url $METRIC_URL || true
 aws --profile $AWS_PROFILE sqs purge-queue --queue-url $INPUT_URL || true
-aws --profile $AWS_PROFILE lambda update-function-configuration --function-name $FXN_NAME --memory-size $SIZE --environment "Variables={RUN_ID=$RUN_ID,METRIC_URL=$METRIC_URL,QUEUE_URL=$INPUT_URL,CRAWL_INDEX_BUCKET=$CRAWL_INDEX_BUCKET,CRAWL_INDEX_KEY=$CRAWL_INDEX_KEY,MAX_CHUNKS=$MAX_CHUNKS,MAX_WORKERS=$MAX_WORKERS,SHUFFLE=t,SINGLE_BUNDLE=$SINGLE_BUNDLE,INITIAL_COUNT=$INITIAL_COUNT,INCREMENT_STEP=$INCREMENT_STEP,HIT_STREAM=$HIT_STREAM}"
+aws --profile $AWS_PROFILE lambda update-function-configuration --function-name $FXN_NAME --memory-size $SIZE --environment "Variables={RUN_ID=$RUN_ID,METRIC_URL=$METRIC_URL,QUEUE_URL=$INPUT_URL,CRAWL_INDEX_BUCKET=$CRAWL_INDEX_BUCKET,CRAWL_INDEX_KEY=$CRAWL_INDEX_KEY,MAX_CHUNKS=$MAX_CHUNKS,MAX_WORKERS=$MAX_WORKERS,SHUFFLE=t,SINGLE_BUNDLE=$SINGLE_BUNDLE,INITIAL_COUNT=$INITIAL_COUNT,INCREMENT_STEP=$INCREMENT_STEP}"
 
 aws --profile $AWS_PROFILE lambda invoke --function-name $FXN_NAME --invocation-type Event out/test.`date +%s` --payload '{ "type" : "start" }'
 
