@@ -1,10 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Parameters:
-  KinesisShards:
-    Type: Number
-    Description: 'How many shards do you want for the result stream'
-    Default: 16
   NumberOfWorkers:
     Type: Number
     Description: 'How many concurrent workers do you want'
@@ -27,56 +23,6 @@ Parameters:
     Default: '(\([0-9]{3}\) |[0-9]{3}-)[0-9]{3}-[0-9]{4}'
 
 Resources:
-
-  HitBucket:
-    Type: AWS::S3::Bucket
-
-  OmnipotentRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          -
-            Effect: "Allow"
-            Principal:
-              Service:
-                - "lambda.amazonaws.com"
-                - "firehose.amazonaws.com"
-            Action:
-              - "sts:AssumeRole"
-      Policies:
-        -
-          PolicyName: "root"
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              -
-                Effect: "Allow"
-                Action: "*"
-                Resource: "*"
-
-  HitHose:
-    Type: AWS::KinesisFirehose::DeliveryStream
-    Properties:
-      DeliveryStreamName: HitHose
-      DeliveryStreamType: KinesisStreamAsSource
-      S3DestinationConfiguration:
-        BucketARN: !GetAtt HitBucket.Arn
-        BufferingHints:
-          IntervalInSeconds: 300
-          SizeInMBs: 64
-        Prefix: "data/"
-        CompressionFormat: UNCOMPRESSED
-        RoleARN: !GetAtt OmnipotentRole.Arn
-      KinesisStreamSourceConfiguration:
-        KinesisStreamARN:  !GetAtt HitStream.Arn
-        RoleARN: !GetAtt OmnipotentRole.Arn
-
-  HitStream:
-    Type: AWS::Kinesis::Stream
-    Properties:
-      ShardCount: !Ref KinesisShards
 
   Drainer:
     Type: AWS::Serverless::Function
@@ -107,8 +53,6 @@ Resources:
       MemorySize: 1024
       Timeout: 300
       Policies:
-        - KinesisCrudPolicy:
-            StreamName: !Ref HitStream
         - SQSPollerPolicy:
              QueueName:
                 Fn::GetAtt: [ "CrawlQueue", "QueueName" ]
@@ -151,5 +95,3 @@ Outputs:
     Value: !GetAtt MetricQueue.QueueName
   CrawlQueue:
     Value: !GetAtt CrawlQueue.QueueName
-  HitStream:
-    Value: !Ref HitStream

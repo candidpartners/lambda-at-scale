@@ -1,12 +1,13 @@
 OUT=out
 
-FXN_NAME?=cc
+NOW=$(shell date +%Y%m%d%H%M%S)
+FXN_NAME?=cc-$(NOW)
 S3_BUCKET?=candid-serverlessrepo
 OUTPUT_CF=$(OUT)/serverless.yaml
 REGION?=us-east-1
 APPLICATION_NAME=LambdaScale
 APPLICATION_ID=arn:aws:serverlessrepo:$(REGION):$(AWS_ACN):applications/$(APPLICATION_NAME)
-VERSION?=1.0.0
+VERSION?=1.0.$(NOW)
 
 INDEX_ZIP = $(OUT)/index.zip
 STAMP_SETUP = $(OUT)/stamp-setup
